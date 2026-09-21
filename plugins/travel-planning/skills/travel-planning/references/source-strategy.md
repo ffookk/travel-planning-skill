@@ -37,7 +37,7 @@
 | 航班运行与价格 | [飞常准 Aviation MCP](https://github.com/variflight/variflight-mcp) | 已通过 `$variflight` 引导固定版本官方 MCP；需要 `VARIFLIGHT_API_KEY`，适合班次、舱位价格、指定航班状态和舒适度。结果以标准快照和 `inventory_refs[]` 消费。 |
 | 火车与空铁联运 | [飞常准 Tripmatch MCP](https://github.com/variflight/tripmatch-mcp) | 已通过 `$variflight` 引导固定版本官方 MCP；需要 `VARIFLIGHT_API_KEY`，结果作为平台候选；中国铁路最终回到 12306 复核。 |
 | 中国景点基础资料 | [china-travel-kit](https://github.com/tczyliu/china-travel-kit) | 只作带来源和 `last_verified` 的候选数据；不代替官网的当日开放、票价、预约和临时公告。 |
-| 小红书通用能力 | [autoclaw-cc/xiaohongshu-skills](https://github.com/autoclaw-cc/xiaohongshu-skills) | 已固定 commit 并作为插件 Skill/CLI 依赖接入；旅行研究默认只读，用户需加载 Chrome 扩展并自行登录，遇风控停止。具体见[小红书通用能力集成](xiaohongshu-integration.md)。 |
+| 小红书通用能力 | [xpzouying/xiaohongshu-mcp](https://github.com/xpzouying/xiaohongshu-mcp) | 已固定 `v2.5.0` 并作为本地 Streamable HTTP MCP 接入；使用独立浏览器，不需要 Chrome 扩展；旅行研究默认只读，首次由用户扫码登录，遇风控停止。具体见[小红书 MCP 集成](xiaohongshu-integration.md)。 |
 | 通用 Agent 搜索 | [SciPhi-AI/agent-search](https://github.com/SciPhi-AI/agent-search) | 不采用为小红书方案。它只接 Bing/AgentSearch，不提供小红书专用覆盖，且依赖较旧 Python/OpenAI SDK。 |
 | 全流程规划 | [trip-planner-skill](https://github.com/skywain/trip-planner-skill) | 可借鉴分阶段研究、自检、行李/时区/复核阶梯；其航班抓取与第三方深链不能直接视为授权实时来源。 |
 | 其他航班与酒店接口 | [travel-agent-skills](https://github.com/mtnrabi/travel-agent-skills) | 暂不接入；现有飞猪/飞常准覆盖不足时，才在用户明确同意凭证、外发数据和调用费用后继续评估。 |

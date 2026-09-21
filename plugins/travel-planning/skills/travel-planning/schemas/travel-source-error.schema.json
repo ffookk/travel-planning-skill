@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://travel-itinerary-page.local/schemas/travel-source-error.schema.json",
+  "$id": "https://travel-planning.local/schemas/travel-source-error.schema.json",
   "title": "Travel Source Query Error",
   "type": "object",
   "required": ["schema_version", "status", "failure_kind", "message", "checked_at"],

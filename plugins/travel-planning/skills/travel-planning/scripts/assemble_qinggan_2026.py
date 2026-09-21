@@ -436,7 +436,7 @@ def build() -> dict[str, Any]:
             "cost": "实时车费待查；高德查询显示路桥费约¥6", "reason": "直接到本次住宿候选，避免用中心广场作错误终点",
             "fallback": "主酒店未订成后，按实际酒店入口重新算路", "live_status": "高德2026-09-21基础算路；酒店和航班锁定后重算",
             "map_route": {"origin": "102.049251,36.521815", "destination": "101.723941,36.643921", "mode": "car", "assumption": "终点是住宿候选；实际酒店确定后重算"},
-            "action_links": [action("在高德查看机场至候选酒店", "https://uri.amap.com/navigation?from=102.049251%2C36.521815%2C%E8%A5%BF%E5%AE%81T3&to=101.723941%2C36.643921%2C%E8%A5%BF%E5%AE%81%E6%B5%B7%E6%B9%96%E6%96%B0%E5%8C%BA%E7%BE%8E%E5%B1%85%E9%85%92%E5%BA%97&mode=car&policy=0&src=travel-itinerary-page&callnative=0", "map", "高德地图", "出发时按实时导航复核")],
+            "action_links": [action("在高德查看机场至候选酒店", "https://uri.amap.com/navigation?from=102.049251%2C36.521815%2C%E8%A5%BF%E5%AE%81T3&to=101.723941%2C36.643921%2C%E8%A5%BF%E5%AE%81%E6%B5%B7%E6%B9%96%E6%96%B0%E5%8C%BA%E7%BE%8E%E5%B1%85%E9%85%92%E5%BA%97&mode=car&policy=0&src=travel-planning&callnative=0", "map", "高德地图", "出发时按实时导航复核")],
             "source_ids": ["route-data-amap-direction", "main-amap-route-corrections-20260921"],
         },
         {
@@ -447,7 +447,7 @@ def build() -> dict[str, Any]:
             "cost": "计入包车总价或自驾成本，待书面报价；高德查询显示路桥费约¥191", "reason": "午餐已回到大柴旦镇，应从镇内而不是翡翠湖重新起算",
             "fallback": "出现道路管制或预计夜间进入陌生山口时，取消非必要停靠并服从交管/司机方案", "live_status": "高德2026-09-21基础算路；9月30日和出发当天复核",
             "map_route": {"origin": "95.361190,37.849028", "destination": "94.662328,40.142066", "mode": "car", "assumption": "起点为大柴旦镇中心，终点为敦煌市中心临时锚点；酒店确定后重算"},
-            "action_links": [action("在高德查看大柴旦镇至敦煌", "https://uri.amap.com/navigation?from=95.361190%2C37.849028%2C%E5%A4%A7%E6%9F%B4%E6%97%A6%E9%95%87&to=94.662328%2C40.142066%2C%E6%95%A6%E7%85%8C%E5%B8%82%E4%B8%AD%E5%BF%83&mode=car&policy=0&src=travel-itinerary-page&callnative=0", "map", "高德地图", "出发时按实时导航复核")],
+            "action_links": [action("在高德查看大柴旦镇至敦煌", "https://uri.amap.com/navigation?from=95.361190%2C37.849028%2C%E5%A4%A7%E6%9F%B4%E6%97%A6%E9%95%87&to=94.662328%2C40.142066%2C%E6%95%A6%E7%85%8C%E5%B8%82%E4%B8%AD%E5%BF%83&mode=car&policy=0&src=travel-planning&callnative=0", "map", "高德地图", "出发时按实时导航复核")],
             "source_ids": ["route-data-amap-direction", "main-amap-route-corrections-20260921"],
         },
         {
@@ -458,7 +458,7 @@ def build() -> dict[str, Any]:
             "cost": "计入包车总价或自驾成本；高德查询显示路桥费约¥90", "reason": "服务区在直达大柴旦主线上，不为午餐驶入都兰县城",
             "fallback": "服务区餐饮不可用时使用茶卡提前打包的主食；仍在服务区完成司机休息", "live_status": "高德2026-09-21基础算路；出发当天复核入口和道路事件",
             "map_route": {"origin": "99.078356,36.759981", "destination": "97.215870,37.341137", "mode": "car", "assumption": "终点为高德标注的小柴旦方向服务区；当天确认同向入口"},
-            "action_links": [action("在高德查看茶卡至柯鲁克服务区", "https://uri.amap.com/navigation?from=99.078356%2C36.759981%2C%E8%8C%B6%E5%8D%A1%E7%9B%90%E6%B9%96&to=97.215870%2C37.341137%2C%E6%9F%AF%E9%B2%81%E5%85%8B%E6%9C%8D%E5%8A%A1%E5%8C%BA&mode=car&policy=0&src=travel-itinerary-page&callnative=0", "map", "高德地图", "出发时按实时导航复核")],
+            "action_links": [action("在高德查看茶卡至柯鲁克服务区", "https://uri.amap.com/navigation?from=99.078356%2C36.759981%2C%E8%8C%B6%E5%8D%A1%E7%9B%90%E6%B9%96&to=97.215870%2C37.341137%2C%E6%9F%AF%E9%B2%81%E5%85%8B%E6%9C%8D%E5%8A%A1%E5%8C%BA&mode=car&policy=0&src=travel-planning&callnative=0", "map", "高德地图", "出发时按实时导航复核")],
             "source_ids": ["route-data-amap-direction", "main-amap-route-corrections-20260921"],
         },
         {
@@ -469,7 +469,7 @@ def build() -> dict[str, Any]:
             "cost": "计入包车总价或自驾成本；高德查询显示路桥费约¥71", "reason": "与午餐锚点和大柴旦住宿候选一一对应",
             "fallback": "道路延误时取消沿途加点，直接入住；晚餐改酒店或外卖", "live_status": "高德2026-09-21基础算路；酒店确定后替换终点",
             "map_route": {"origin": "97.215870,37.341137", "destination": "95.359818,37.849942", "mode": "car", "assumption": "终点是住宿候选；实际酒店确定后重算"},
-            "action_links": [action("在高德查看柯鲁克服务区至大柴旦", "https://uri.amap.com/navigation?from=97.215870%2C37.341137%2C%E6%9F%AF%E9%B2%81%E5%85%8B%E6%9C%8D%E5%8A%A1%E5%8C%BA&to=95.359818%2C37.849942%2C%E5%A4%A7%E6%9F%B4%E6%97%A6%E9%85%92%E5%BA%97%E5%80%99%E9%80%89&mode=car&policy=0&src=travel-itinerary-page&callnative=0", "map", "高德地图", "出发时按实时导航复核")],
+            "action_links": [action("在高德查看柯鲁克服务区至大柴旦", "https://uri.amap.com/navigation?from=97.215870%2C37.341137%2C%E6%9F%AF%E9%B2%81%E5%85%8B%E6%9C%8D%E5%8A%A1%E5%8C%BA&to=95.359818%2C37.849942%2C%E5%A4%A7%E6%9F%B4%E6%97%A6%E9%85%92%E5%BA%97%E5%80%99%E9%80%89&mode=car&policy=0&src=travel-planning&callnative=0", "map", "高德地图", "出发时按实时导航复核")],
             "source_ids": ["route-data-amap-direction", "main-amap-route-corrections-20260921"],
         },
     ])
@@ -486,7 +486,7 @@ def build() -> dict[str, Any]:
         "name": "酒店/沙洲夜市步行圈焖饼晚餐", "location": "敦煌酒店至沙洲夜市约步行范围内",
         "why_here": "不再专门打车追固定网红店；保留胡羊焖饼这一菜品目标",
         "fallback": "步行圈内选择即时有座的黄焖羊肉/焖饼店，或酒店餐厅",
-        "action_links": [action("查看酒店周边焖饼候选", "https://uri.amap.com/search?keyword=%E6%B2%99%E6%B4%B2%E5%A4%9C%E5%B8%82%20%E7%BE%8A%E8%82%89%E7%84%96%E9%A5%BC&city=%E6%95%A6%E7%85%8C&src=travel-itinerary-page&callnative=0", "restaurant", "高德地图", "只选步行可达且即时有座的店")],
+        "action_links": [action("查看酒店周边焖饼候选", "https://uri.amap.com/search?keyword=%E6%B2%99%E6%B4%B2%E5%A4%9C%E5%B8%82%20%E7%BE%8A%E8%82%89%E7%84%96%E9%A5%BC&city=%E6%95%A6%E7%85%8C&src=travel-planning&callnative=0", "restaurant", "高德地图", "只选步行可达且即时有座的店")],
     })
     meals.append({
         "id": "meal-d3-lunch-main-route", "meal_type": "午餐", "name": "柯鲁克服务区午餐与司机休息",
@@ -496,7 +496,7 @@ def build() -> dict[str, Any]:
         "queue_note": "无热食或排队超过20分钟即吃打包餐；至少保留40分钟给司机用餐和休息",
         "why_here": "位于直达大柴旦主线上，避免都兰方案增加约137公里基础路程",
         "fallback": "茶卡退房时打包主食；服务区只承担停车、如厕和休息",
-        "action_links": [action("查看柯鲁克服务区", "https://uri.amap.com/marker?position=97.215870%2C37.341137&name=%E4%B8%AD%E5%9B%BD%E7%9F%B3%E5%8C%96%E6%9F%AF%E9%B2%81%E5%85%8B%E6%9C%8D%E5%8A%A1%E5%8C%BA%28%E5%BE%B7%E5%B0%8F%E9%AB%98%E9%80%9F%E5%B0%8F%E6%9F%B4%E6%97%A6%E6%96%B9%E5%90%91%29&src=travel-itinerary-page&coordinate=gaode&callnative=0", "restaurant", "高德地图", "仅确认服务区POI；餐饮档口营业需另查")],
+        "action_links": [action("查看柯鲁克服务区", "https://uri.amap.com/marker?position=97.215870%2C37.341137&name=%E4%B8%AD%E5%9B%BD%E7%9F%B3%E5%8C%96%E6%9F%AF%E9%B2%81%E5%85%8B%E6%9C%8D%E5%8A%A1%E5%8C%BA%28%E5%BE%B7%E5%B0%8F%E9%AB%98%E9%80%9F%E5%B0%8F%E6%9F%B4%E6%97%A6%E6%96%B9%E5%90%91%29&src=travel-planning&coordinate=gaode&callnative=0", "restaurant", "高德地图", "仅确认服务区POI；餐饮档口营业需另查")],
     })
     for day, window in ((2, "06:20–06:50"), (3, "06:30–07:00"), (4, "07:15–07:45"), (5, "06:10–06:35"), (6, "08:00–08:40")):
         meals.append({

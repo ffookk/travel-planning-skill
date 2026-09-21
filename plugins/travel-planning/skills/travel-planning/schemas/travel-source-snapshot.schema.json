@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://travel-itinerary-page.local/schemas/travel-source-snapshot.schema.json",
+  "$id": "https://travel-planning.local/schemas/travel-source-snapshot.schema.json",
   "title": "Travel Source Snapshot",
   "description": "Provider-neutral quote, operational status, or lookup snapshot for travel inventory.",
   "type": "object",

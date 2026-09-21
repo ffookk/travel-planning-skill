@@ -120,7 +120,7 @@
         "fallback": "短途打车",
         "live_status": "出发当天用地图复核",
         "map_route": {"origin": "120.165438,30.255247", "destination": "120.156800,30.254900", "mode": "walk", "assumption": "演示坐标，实际酒店确定后重算"},
-        "action_links": [{"type": "map", "label": "在高德查看龙翔桥至湖滨路线", "provider": "高德地图", "url": "https://uri.amap.com/navigation?from=120.165438,30.255247,龙翔桥&to=120.156800,30.254900,湖滨公园&mode=walk&policy=0&src=travel-itinerary-page&callnative=0"}],
+        "action_links": [{"type": "map", "label": "在高德查看龙翔桥至湖滨路线", "provider": "高德地图", "url": "https://uri.amap.com/navigation?from=120.165438,30.255247,龙翔桥&to=120.156800,30.254900,湖滨公园&mode=walk&policy=0&src=travel-planning&callnative=0"}],
         "source_ids": []
       },
       {
@@ -136,7 +136,7 @@
         "fallback": "出租车",
         "live_status": "出发当天用地图复核",
         "map_route": {"origin": "120.148270,30.263600", "destination": "120.102000,30.240000", "mode": "car", "assumption": "演示坐标，出发当天按实际上下车点重算"},
-        "action_links": [{"type": "map", "label": "在高德查看断桥至灵隐路线", "provider": "高德地图", "url": "https://uri.amap.com/navigation?from=120.148270,30.263600,断桥&to=120.102000,30.240000,灵隐片区&mode=car&policy=0&src=travel-itinerary-page&callnative=0"}],
+        "action_links": [{"type": "map", "label": "在高德查看断桥至灵隐路线", "provider": "高德地图", "url": "https://uri.amap.com/navigation?from=120.148270,30.263600,断桥&to=120.102000,30.240000,灵隐片区&mode=car&policy=0&src=travel-planning&callnative=0"}],
         "source_ids": []
       },
       {
@@ -152,7 +152,7 @@
         "fallback": "全程打车",
         "live_status": "出发当天复核",
         "map_route": {"origin": "120.104000,30.223000", "destination": "120.165438,30.255247", "mode": "car", "assumption": "演示终点为酒店片区；酒店和返程车站确定后拆段重算"},
-        "action_links": [{"type": "map", "label": "在高德查看龙井村至酒店片区路线", "provider": "高德地图", "url": "https://uri.amap.com/navigation?from=120.104000,30.223000,龙井村&to=120.165438,30.255247,龙翔桥酒店片区&mode=car&policy=0&src=travel-itinerary-page&callnative=0"}],
+        "action_links": [{"type": "map", "label": "在高德查看龙井村至酒店片区路线", "provider": "高德地图", "url": "https://uri.amap.com/navigation?from=120.104000,30.223000,龙井村&to=120.165438,30.255247,龙翔桥酒店片区&mode=car&policy=0&src=travel-planning&callnative=0"}],
         "source_ids": []
       }
     ],
@@ -338,7 +338,7 @@
             "entry": {"name": "湖滨公园入口", "location_query": "杭州湖滨公园", "reason": "距地铁和住宿片区近，适合作为北向步行起点"},
             "exit": {"name": "断桥东侧", "location_query": "杭州断桥残雪"},
             "checkpoints": [
-              {"id": "cp-d1-lakefront", "order": 1, "time": "09:00", "end_time": "09:35", "name": "湖滨公园湖岸", "kind": "visit", "required": true, "instruction": "沿湖岸向北步行，在开阔湖面完成第一段观景", "narration": "先看湖岸线与远山层次；早晨逆光时不要在同一机位久等。", "move_from_previous": {"mode": "步行", "duration": "约 10 分钟"}, "action_links": [{"type": "map", "label": "导航到湖滨公园", "provider": "高德地图", "url": "https://uri.amap.com/search?keyword=杭州湖滨公园&src=travel-itinerary-page", "checked_at": "2026-09-20", "disclaimer": "按现场开放入口进入"}]},
+              {"id": "cp-d1-lakefront", "order": 1, "time": "09:00", "end_time": "09:35", "name": "湖滨公园湖岸", "kind": "visit", "required": true, "instruction": "沿湖岸向北步行，在开阔湖面完成第一段观景", "narration": "先看湖岸线与远山层次；早晨逆光时不要在同一机位久等。", "move_from_previous": {"mode": "步行", "duration": "约 10 分钟"}, "action_links": [{"type": "map", "label": "导航到湖滨公园", "provider": "高德地图", "url": "https://uri.amap.com/search?keyword=杭州湖滨公园&src=travel-planning", "checked_at": "2026-09-20", "disclaimer": "按现场开放入口进入"}]},
               {"id": "cp-d1-broken-bridge", "order": 2, "time": "09:35", "end_time": "10:30", "name": "沿湖步行至断桥东侧", "kind": "exit", "required": true, "instruction": "沿北向湖岸步行，在断桥东侧结束并衔接下一段交通", "narration": "这一段以连续湖岸景观为主；人流密集时不必上桥。", "move_from_previous": {"mode": "湖边步行", "duration": "约 45–60 分钟"}, "fallback": "桥面拥挤时不过桥，在东侧直接结束"}
             ],
             "leave_by": "10:30",

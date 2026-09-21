@@ -57,6 +57,40 @@ class SourceAdaptersTest(unittest.TestCase):
                         )
         self.assertEqual(raised.exception.failure_kind, "contract_mismatch")
 
+    def test_probe_mcp_http_initializes_and_lists_expected_tools(self) -> None:
+        initialized = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "protocolVersion": "2025-03-26",
+                "serverInfo": {"name": "xiaohongshu-mcp", "version": "2.0.0"},
+            },
+        }
+        listed = {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": {"tools": [{"name": "check_login_status"}, {"name": "search_feeds"}]},
+        }
+        with patch.object(
+            source_adapters,
+            "_mcp_http_exchange",
+            side_effect=[(initialized, None), (None, None), (listed, None)],
+        ) as exchange:
+            result = source_adapters.probe_mcp_http(
+                "http://127.0.0.1:18060/mcp",
+                5,
+                {"check_login_status", "search_feeds"},
+            )
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["tools"], ["check_login_status", "search_feeds"])
+        self.assertEqual(exchange.call_args_list[2].args[1]["method"], "tools/list")
+
+    def test_parse_mcp_http_sse_response(self) -> None:
+        payload = source_adapters._parse_mcp_http_body(
+            'event: message\ndata: {"jsonrpc":"2.0","id":1,"result":{"ok":true}}\n\n'
+        )
+        self.assertEqual(payload["result"], {"ok": True})
+
     def test_provider_commands_are_version_pinned(self) -> None:
         with patch.object(source_adapters.shutil, "which", return_value="/usr/local/bin/npx"):
             for spec in source_adapters.PROVIDERS.values():

@@ -244,15 +244,45 @@ class ResearchSourcesTest(unittest.TestCase):
         self.assertEqual(link["provider"], "Google Maps")
         self.assertIn("Kiyomizu-dera+Niomon+entrance", link["url"])
 
-    def test_xhs_health_uses_generic_skill_status(self) -> None:
-        completed = MagicMock(
-            returncode=0,
-            stdout=json.dumps({"status": "ready", "provider": "autoclaw-cc/xiaohongshu-skills"}),
-        )
-        with patch.object(research_sources.subprocess, "run", return_value=completed) as run:
+    def test_xhs_health_probes_streamable_http_mcp(self) -> None:
+        transport = {"status": "ready", "tools": ["check_login_status", "search_feeds", "get_feed_detail"]}
+        with patch.object(research_sources, "probe_mcp_http", return_value=transport) as probe:
             result = research_sources.xhs_health(Namespace())
         self.assertEqual(result["status"], "ready")
-        self.assertTrue(run.call_args.args[0][1].endswith("skills/xiaohongshu/scripts/setup.py"))
+        self.assertEqual(result["provider"], "xpzouying/xiaohongshu-mcp")
+        probe.assert_called_once_with(
+            "http://127.0.0.1:18060/mcp",
+            15,
+            {"check_login_status", "search_feeds", "get_feed_detail"},
+            None,
+        )
+
+    def test_xhs_login_status_uses_read_only_mcp_tool(self) -> None:
+        with patch.object(research_sources, "xhs_mcp_call", return_value={"text": "✅ 已登录\n用户名: test"}) as call:
+            result = research_sources.xhs_login_status(Namespace(timeout=9))
+        self.assertEqual(result["status"], "authenticated")
+        call.assert_called_once_with("check_login_status", {}, timeout=9)
+
+    def test_xhs_preflight_requires_protocol_tools_and_login(self) -> None:
+        args = Namespace(timeout=7, skip_upstream=False)
+        transport = {"status": "ready", "tools": ["check_login_status", "search_feeds", "get_feed_detail"]}
+        with (
+            patch.object(research_sources, "probe_mcp_http", return_value=transport) as probe,
+            patch.object(
+                research_sources,
+                "xhs_login_status",
+                return_value={"status": "authenticated", "session": {"logged_in": True}},
+            ),
+        ):
+            result = research_sources._xiaohongshu_preflight(args, True)
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["kind"], "mcp_streamable_http")
+        probe.assert_called_once_with(
+            "http://127.0.0.1:18060/mcp",
+            7,
+            {"check_login_status", "search_feeds", "get_feed_detail"},
+            None,
+        )
 
     def test_xhs_search_caches_token_but_never_outputs_it(self) -> None:
         response = {
@@ -260,10 +290,13 @@ class ResearchSourcesTest(unittest.TestCase):
                 {
                     "id": "note-1",
                     "xsecToken": "secret-token",
-                    "type": "normal",
-                    "displayTitle": "秋天入口实测",
-                    "user": {"nickname": "旅行者"},
-                    "interactInfo": {"likedCount": "12", "commentCount": "3"},
+                    "modelType": "note",
+                    "noteCard": {
+                        "type": "normal",
+                        "displayTitle": "秋天入口实测",
+                        "user": {"nickname": "旅行者"},
+                        "interactInfo": {"likedCount": "12", "commentCount": "3"},
+                    },
                 }
             ],
             "count": 1,
@@ -280,22 +313,30 @@ class ResearchSourcesTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             cache = Path(directory) / "tokens.json"
             with patch.dict(os.environ, {"XHS_TOKEN_CACHE": str(cache)}, clear=False):
-                with patch.object(research_sources, "run_xhs_skills_json", return_value=response):
+                with patch.object(research_sources, "xhs_mcp_call", return_value=response):
                     result = research_sources.xhs_search(args)
+                    call = research_sources.xhs_mcp_call.call_args
             self.assertNotIn("secret-token", json.dumps(result, ensure_ascii=False))
             self.assertEqual(result["results"][0]["note_id"], "note-1")
+            self.assertEqual(
+                call.args[1]["filters"],
+                {"sort_by": "最新", "publish_time": "半年内"},
+            )
             self.assertEqual(json.loads(cache.read_text(encoding="utf-8"))["notes"]["note-1"]["xsec_token"], "secret-token")
             self.assertEqual(cache.stat().st_mode & 0o777, 0o600)
 
     def test_xhs_detail_reads_token_from_private_cache(self) -> None:
         response = {
-            "note": {
-                "noteId": "note-1",
-                "title": "路线实测",
-                "desc": "从东门进入步行较少",
-                "time": 1789855200000,
-                "user": {"nickname": "旅行者"},
-                "interactInfo": {"likedCount": "10"},
+            "feed_id": "note-1",
+            "data": {
+                "note": {
+                    "noteId": "note-1",
+                    "title": "路线实测",
+                    "desc": "从东门进入步行较少",
+                    "time": 1789855200000,
+                    "user": {"nickname": "旅行者"},
+                    "interactInfo": {"likedCount": "10"},
+                }
             }
         }
         with tempfile.TemporaryDirectory() as directory:
@@ -305,11 +346,18 @@ class ResearchSourcesTest(unittest.TestCase):
                 encoding="utf-8",
             )
             with patch.dict(os.environ, {"XHS_TOKEN_CACHE": str(cache)}, clear=False):
-                with patch.object(research_sources, "run_xhs_skills_json", return_value=response) as call:
+                with patch.object(research_sources, "xhs_mcp_call", return_value=response) as call:
                     result = research_sources.xhs_detail(Namespace(note_id="note-1"))
-            self.assertIn("cached-token", call.call_args.args[0])
+            self.assertEqual(call.call_args.args[0], "get_feed_detail")
+            self.assertEqual(call.call_args.args[1]["xsec_token"], "cached-token")
             self.assertNotIn("token", json.dumps(result, ensure_ascii=False).lower())
             self.assertEqual(result["note"]["title"], "路线实测")
+            self.assertEqual(result["note"]["description_excerpt"], "从东门进入步行较少")
+
+    def test_xhs_excerpt_is_bounded(self) -> None:
+        excerpt = research_sources.xhs_excerpt("  " + "体验很好 " * 100, limit=32)
+        self.assertLessEqual(len(excerpt), 33)
+        self.assertTrue(excerpt.endswith("…"))
 
     def test_xhs_fallback_preserves_search_phrase(self) -> None:
         args = Namespace(

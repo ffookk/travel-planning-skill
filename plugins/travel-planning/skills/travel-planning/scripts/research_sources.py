@@ -7,7 +7,6 @@ import argparse
 import json
 import os
 import re
-import subprocess
 import sys
 import time
 from datetime import datetime
@@ -29,7 +28,9 @@ from source_adapters import (  # noqa: E402
     PROVIDERS,
     AdapterError,
     adapter,
+    call_mcp_http,
     call_mcp_stdio,
+    probe_mcp_http,
     probe_mcp_stdio,
     provider_capabilities,
     provider_command,
@@ -56,24 +57,15 @@ NOMINATIM_SEARCH = "https://nominatim.openstreetmap.org/search"
 USER_AGENT = "travel-planning/1.0 (read-only public API client)"
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 LOCAL_CONFIG_FILE = source_config_file(os.environ)
-XHS_DEFAULT_URL = "http://127.0.0.1:18060"
-XHS_CURRENT_DATA_ROOT = Path.home() / ".local" / "share" / "travel-planning" / "xiaohongshu-skills"
-XHS_LEGACY_DATA_ROOT = Path.home() / ".local" / "share" / "travel-itinerary-page" / "xiaohongshu-skills"
-XHS_DEFAULT_DATA_ROOT = (
-    XHS_LEGACY_DATA_ROOT
-    if XHS_LEGACY_DATA_ROOT.exists() and not XHS_CURRENT_DATA_ROOT.exists()
-    else XHS_CURRENT_DATA_ROOT
-)
+XHS_DEFAULT_URL = "http://127.0.0.1:18060/mcp"
+XHS_DEFAULT_DATA_ROOT = Path.home() / ".local" / "share" / "travel-planning" / "xiaohongshu-mcp"
 XHS_DATA_ROOT = Path(
     os.environ.get(
-        "TRAVEL_XHS_HOME",
+        "TRAVEL_XHS_MCP_HOME",
         str(XHS_DEFAULT_DATA_ROOT),
     )
 ).expanduser().resolve()
 XHS_TOKEN_CACHE = XHS_DATA_ROOT / "state" / "search-tokens.json"
-XHS_SKILLS_CLI = PLUGIN_ROOT / "skills" / "xiaohongshu" / "scripts" / "cli.py"
-XHS_SKILLS_SETUP = PLUGIN_ROOT / "skills" / "xiaohongshu" / "scripts" / "setup.py"
-XHS_SKILLS_TOKEN_CACHE = XHS_TOKEN_CACHE
 ALLOWED_LOCAL_CONFIG_KEYS = SOURCE_KEYS
 
 TRANSPORT_COVERAGE_SORTS = (6, 7, 4, 3, 2)
@@ -414,41 +406,36 @@ def xhs_detail(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
-# The public CLI commands below intentionally override the legacy localhost
-# adapter above.  Keeping the old parsing helpers for one compatibility cycle
-# lets existing private token caches remain readable while all new queries use
-# the reusable autoclaw-cc/xiaohongshu-skills implementation.
-def run_xhs_skills_json(arguments: list[str], timeout: int = 180) -> dict[str, Any]:
-    try:
-        completed = subprocess.run(
-            [sys.executable, str(XHS_SKILLS_CLI), *arguments],
-            capture_output=True,
-            check=False,
-            text=True,
-            timeout=timeout,
-        )
-    except (OSError, subprocess.TimeoutExpired) as error:
-        raise SourceError(f"无法调用小红书通用 Skill：{error}") from error
-    try:
-        payload = json.loads(completed.stdout)
-    except json.JSONDecodeError as error:
-        raise SourceError("小红书通用 Skill 未返回有效 JSON") from error
-    if not isinstance(payload, dict):
-        raise SourceError("小红书通用 Skill 返回格式无效")
-    if completed.returncode not in {0, 1}:
-        message = payload.get("error") or payload.get("message") or "小红书通用 Skill 调用失败"
-        raise SourceError(str(message))
-    return payload
+def xhs_mcp_url() -> str:
+    raw = os.environ.get("XHS_MCP_URL", XHS_DEFAULT_URL).rstrip("/")
+    parsed = urlparse(raw)
+    if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
+        raise SourceError("XHS_MCP_URL 只允许本机 loopback HTTP 地址")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise SourceError("XHS_MCP_URL 不能包含凭证、查询参数或片段")
+    if not parsed.path.endswith("/mcp"):
+        raise SourceError("XHS_MCP_URL 必须指向 /mcp 端点")
+    return raw
 
 
-def xhs_skills_token_cache_path() -> Path:
+def xhs_mcp_call(tool: str, arguments: dict[str, Any], timeout: int = 180) -> Any:
+    return call_mcp_http(
+        xhs_mcp_url(),
+        tool,
+        arguments,
+        timeout,
+        os.environ.get("XHS_MCP_AUTH_TOKEN"),
+    )
+
+
+def xhs_mcp_token_cache_path() -> Path:
     custom = os.environ.get("XHS_TOKEN_CACHE")
-    return Path(custom).expanduser().resolve() if custom else XHS_SKILLS_TOKEN_CACHE
+    return Path(custom).expanduser().resolve() if custom else XHS_TOKEN_CACHE
 
 
-def cache_xhs_skills_tokens(feeds: list[dict[str, Any]], query: str) -> None:
+def cache_xhs_mcp_tokens(feeds: list[dict[str, Any]], query: str) -> None:
     original = os.environ.get("XHS_TOKEN_CACHE")
-    os.environ["XHS_TOKEN_CACHE"] = str(xhs_skills_token_cache_path())
+    os.environ["XHS_TOKEN_CACHE"] = str(xhs_mcp_token_cache_path())
     try:
         cache_xhs_tokens(feeds, query)
     finally:
@@ -458,9 +445,9 @@ def cache_xhs_skills_tokens(feeds: list[dict[str, Any]], query: str) -> None:
             os.environ["XHS_TOKEN_CACHE"] = original
 
 
-def read_xhs_skills_token_cache() -> dict[str, Any]:
+def read_xhs_mcp_token_cache() -> dict[str, Any]:
     original = os.environ.get("XHS_TOKEN_CACHE")
-    os.environ["XHS_TOKEN_CACHE"] = str(xhs_skills_token_cache_path())
+    os.environ["XHS_TOKEN_CACHE"] = str(xhs_mcp_token_cache_path())
     try:
         return read_token_cache()
     finally:
@@ -471,48 +458,57 @@ def read_xhs_skills_token_cache() -> dict[str, Any]:
 
 
 def xhs_health(_: argparse.Namespace) -> dict[str, Any]:
-    try:
-        completed = subprocess.run(
-            [sys.executable, str(XHS_SKILLS_SETUP), "status"],
-            capture_output=True,
-            check=False,
-            text=True,
-            timeout=15,
-        )
-        payload = json.loads(completed.stdout)
-    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError) as error:
-        raise SourceError(f"无法检查小红书通用 Skill：{error}") from error
-    if completed.returncode != 0 or not isinstance(payload, dict):
-        raise SourceError(str(payload.get("message") if isinstance(payload, dict) else "安装状态无效"))
-    return payload
-
-
-def xhs_login_status(_: argparse.Namespace) -> dict[str, Any]:
-    data = run_xhs_skills_json(["check-login"], timeout=60)
+    transport = probe_mcp_http(
+        xhs_mcp_url(),
+        15,
+        {"check_login_status", "search_feeds", "get_feed_detail"},
+        os.environ.get("XHS_MCP_AUTH_TOKEN"),
+    )
     return {
-        "status": "authenticated" if data.get("logged_in") else "login_required",
-        "provider": "autoclaw-cc/xiaohongshu-skills（非官方）",
-        "session": {"logged_in": bool(data.get("logged_in"))},
+        "status": "ready",
+        "provider": "xpzouying/xiaohongshu-mcp",
+        "transport": transport,
         "checked_at": checked_at(),
     }
 
 
-def normalize_xhs_skills_feed(feed: dict[str, Any]) -> dict[str, Any]:
-    user = feed.get("user") or {}
-    interactions = feed.get("interactInfo") or {}
+def xhs_login_status(args: argparse.Namespace) -> dict[str, Any]:
+    data = xhs_mcp_call("check_login_status", {}, timeout=getattr(args, "timeout", 60))
+    text = data.get("text", "") if isinstance(data, dict) else str(data)
+    logged_in = "未登录" not in text and ("已登录" in text or "logged in" in text.lower())
     return {
-        "note_id": feed.get("id"),
-        "title": feed.get("displayTitle"),
+        "status": "authenticated" if logged_in else "login_required",
+        "provider": "xpzouying/xiaohongshu-mcp（非官方）",
+        "session": {"logged_in": logged_in},
+        "checked_at": checked_at(),
+    }
+
+
+def normalize_xhs_mcp_feed(feed: dict[str, Any]) -> dict[str, Any]:
+    note = feed.get("noteCard") or {}
+    user = note.get("user") or {}
+    interactions = note.get("interactInfo") or {}
+    note_id = feed.get("id")
+    return {
+        "note_id": note_id,
+        "title": note.get("displayTitle"),
         "author": user.get("nickname") or user.get("nickName"),
-        "note_type": feed.get("type"),
+        "note_type": note.get("type"),
         "interactions": {
             "likes": interactions.get("likedCount"),
             "comments": interactions.get("commentCount"),
             "collections": interactions.get("collectedCount"),
             "shares": interactions.get("sharedCount"),
         },
-        "source_url": None,
+        "source_url": f"https://www.xiaohongshu.com/explore/{note_id}" if note_id else None,
     }
+
+
+def xhs_excerpt(value: Any, limit: int = 320) -> str | None:
+    if not isinstance(value, str):
+        return None
+    clean = re.sub(r"\s+", " ", value).strip()
+    return clean if len(clean) <= limit else clean[:limit].rstrip() + "…"
 
 
 def xhs_search(args: argparse.Namespace) -> dict[str, Any]:
@@ -526,7 +522,6 @@ def xhs_search(args: argparse.Namespace) -> dict[str, Any]:
         "search_scope": {"all": "不限", "viewed": "已看过", "unviewed": "未看过", "following": "已关注"},
         "location": {"all": "不限", "same_city": "同城", "nearby": "附近"},
     }
-    parameters = ["search-feeds", "--keyword", args.keyword]
     filters = {
         "sort_by": args.sort_by,
         "note_type": args.note_type,
@@ -534,21 +529,29 @@ def xhs_search(args: argparse.Namespace) -> dict[str, Any]:
         "search_scope": args.search_scope,
         "location": args.location,
     }
-    for key, flag in (
-        ("sort_by", "--sort-by"),
-        ("note_type", "--note-type"),
-        ("publish_time", "--publish-time"),
-        ("search_scope", "--search-scope"),
-        ("location", "--location"),
-    ):
-        parameters.extend([flag, value_map[key][filters[key]]])
-    data = run_xhs_skills_json(parameters)
+    upstream_filters = {
+        key: value_map[key][value]
+        for key, value in filters.items()
+        if value not in {"all", "relevance"}
+    }
+    arguments: dict[str, Any] = {"keyword": args.keyword}
+    if upstream_filters:
+        arguments["filters"] = upstream_filters
+    data = xhs_mcp_call(
+        "search_feeds",
+        arguments,
+    )
+    if not isinstance(data, dict):
+        raise SourceError("xiaohongshu-mcp 搜索返回格式无效")
     feeds = [feed for feed in (data.get("feeds") or []) if isinstance(feed, dict)]
-    cache_xhs_skills_tokens(feeds, args.keyword)
-    normalized = [normalize_xhs_skills_feed(feed) for feed in feeds[: args.limit]]
+    for feed in feeds:
+        if feed.get("id") and not feed.get("sourceUrl"):
+            feed["sourceUrl"] = f"https://www.xiaohongshu.com/explore/{feed['id']}"
+    cache_xhs_mcp_tokens(feeds, args.keyword)
+    normalized = [normalize_xhs_mcp_feed(feed) for feed in feeds[: args.limit]]
     return {
         "status": "community_reported",
-        "provider": "autoclaw-cc/xiaohongshu-skills（非官方）",
+        "provider": "xpzouying/xiaohongshu-mcp（非官方）",
         "query": {"keyword": args.keyword, "filters": filters},
         "results": normalized,
         "count": len(normalized),
@@ -563,22 +566,30 @@ def xhs_search(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def xhs_detail(args: argparse.Namespace) -> dict[str, Any]:
-    cached = read_xhs_skills_token_cache().get("notes", {}).get(args.note_id)
+    cached = read_xhs_mcp_token_cache().get("notes", {}).get(args.note_id)
     if not cached or not cached.get("xsec_token"):
         raise SourceError("未找到该笔记的临时访问令牌；请先用 xhs-search 搜索，再读取详情")
-    data = run_xhs_skills_json(
-        ["get-feed-detail", "--feed-id", args.note_id, "--xsec-token", cached["xsec_token"]]
+    data = xhs_mcp_call(
+        "get_feed_detail",
+        {
+            "feed_id": args.note_id,
+            "xsec_token": cached["xsec_token"],
+            "load_all_comments": False,
+        },
     )
-    note = data.get("note") or {}
+    if not isinstance(data, dict):
+        raise SourceError("xiaohongshu-mcp 详情返回格式无效")
+    detail = data.get("data") if isinstance(data.get("data"), dict) else data
+    note = detail.get("note") or {}
     user = note.get("user") or {}
     interactions = note.get("interactInfo") or {}
     return {
         "status": "community_reported",
-        "provider": "autoclaw-cc/xiaohongshu-skills（非官方）",
+        "provider": "xpzouying/xiaohongshu-mcp（非官方）",
         "note": {
             "note_id": note.get("noteId") or args.note_id,
             "title": note.get("title"),
-            "description": note.get("desc") or note.get("body"),
+            "description_excerpt": xhs_excerpt(note.get("desc") or note.get("body")),
             "note_type": note.get("type"),
             "published_at": unix_time(note.get("time")),
             "ip_location": note.get("ipLocation"),
@@ -670,12 +681,13 @@ def capabilities(_: argparse.Namespace) -> dict[str, Any]:
         },
         "xiaohongshu": {
             "adapter_available": True,
-            "live_query_requires": ["固定版本通用 Skill 已安装", "Chrome 扩展已加载", "用户本人登录"],
-            "provider": "autoclaw-cc/xiaohongshu-skills（非官方，固定版本）",
-            "transport": "通用 Skill + Python CLI + Chrome Extension Bridge",
+            "live_query_requires": ["固定版本本地 MCP 已安装并启动", "用户本人已扫码登录"],
+            "provider": "xpzouying/xiaohongshu-mcp（非官方，固定 v2.5.0）",
+            "transport": "MCP Streamable HTTP + 独立无头浏览器",
             "fields": ["近期玩法", "昼夜体验", "入口体验", "拥挤与避坑", "包车和行李体验"],
             "setup": "python3 skills/xiaohongshu/scripts/setup.py install",
-            "cli": "python3 skills/xiaohongshu/scripts/cli.py",
+            "start": "python3 skills/xiaohongshu/scripts/setup.py start",
+            "endpoint": xhs_mcp_url(),
             "travel_default": "read_only",
         },
         "checked_at": checked_at(),
@@ -860,33 +872,32 @@ def _weather_preflight(args: argparse.Namespace, required: bool) -> dict[str, An
 def _xiaohongshu_preflight(args: argparse.Namespace, required: bool) -> dict[str, Any]:
     started_at = time.monotonic()
     try:
-        installation = xhs_health(argparse.Namespace())
-        if installation.get("status") not in {"installed", "ready"}:
-            raise SourceError("小红书通用 Skill 尚未安装依赖")
+        transport = probe_mcp_http(
+            xhs_mcp_url(),
+            args.timeout,
+            {"check_login_status", "search_feeds", "get_feed_detail"},
+            os.environ.get("XHS_MCP_AUTH_TOKEN"),
+        )
         if args.skip_upstream:
             session = {"status": "skipped", "reason": "--skip-upstream"}
             status = "degraded"
         else:
-            session = xhs_login_status(argparse.Namespace())
+            session = xhs_login_status(argparse.Namespace(timeout=args.timeout))
             if session.get("status") != "authenticated":
-                raise SourceError("小红书 Chrome 扩展未连接或用户尚未登录")
+                raise SourceError("xiaohongshu-mcp 已连接，但用户尚未扫码登录")
             status = "ready"
         return {
             "source_id": "xiaohongshu",
-            "kind": "chrome_extension_bridge",
+            "kind": "mcp_streamable_http",
             "required": required,
             "status": status,
-            "installation": {
-                "status": installation.get("status"),
-                "source_present": installation.get("source_present"),
-                "dependencies_installed": installation.get("dependencies_installed"),
-            },
+            "transport": transport,
             "session": session,
             "latency_ms": round((time.monotonic() - started_at) * 1000),
         }
-    except (OSError, RuntimeError, SourceError) as error:
+    except (AdapterError, OSError, RuntimeError, SourceError) as error:
         return _preflight_failure(
-            "xiaohongshu", "chrome_extension_bridge", required, error, started_at
+            "xiaohongshu", "mcp_streamable_http", required, error, started_at
         )
 
 
@@ -1242,7 +1253,7 @@ def amap_place(args: argparse.Namespace) -> dict[str, Any]:
                 {
                     "position": location,
                     "name": name,
-                    "src": "travel-itinerary-page",
+                    "src": "travel-planning",
                     "coordinate": "gaode",
                     "callnative": 0,
                 }
@@ -1371,7 +1382,7 @@ def amap_route(args: argparse.Namespace) -> dict[str, Any]:
             "to": f"{args.destination},终点",
             "mode": {"walking": "walk", "driving": "car", "transit": "bus"}[args.mode],
             "policy": 0,
-            "src": "travel-itinerary-page",
+            "src": "travel-planning",
             "callnative": 0,
         }
     )
@@ -1431,7 +1442,7 @@ def fallback(args: argparse.Namespace) -> dict[str, Any]:
             links.append(manual_link(f"在 Google Maps 查询：{summary or query}", url, "Google Maps", f"复核入口、路线和实时耗时；{args.recheck}"))
         else:
             url = "https://uri.amap.com/search?" + urlencode(
-                {"keyword": query, "city": args.city or "", "src": "travel-itinerary-page", "callnative": 0}
+                {"keyword": query, "city": args.city or "", "src": "travel-planning", "callnative": 0}
             )
             links.append(manual_link(f"在高德地图查询：{summary or query}", url, "高德地图", f"复核入口、路线和实时耗时；{args.recheck}"))
     elif args.kind == "weather":
@@ -1553,7 +1564,7 @@ def build_parser() -> argparse.ArgumentParser:
     command.add_argument("--days", type=int, default=7, choices=range(1, 17), metavar="1-16")
     command.set_defaults(handler=weather)
 
-    command = subparsers.add_parser("xhs-health", help="检查小红书本机只读服务")
+    command = subparsers.add_parser("xhs-health", help="检查本机小红书 HTTP MCP 协议和工具契约")
     command.set_defaults(handler=xhs_health)
 
     command = subparsers.add_parser("xhs-login-status", help="检查小红书本机登录态")

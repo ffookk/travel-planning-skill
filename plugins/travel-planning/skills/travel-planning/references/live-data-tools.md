@@ -14,7 +14,7 @@ python3 skills/travel-planning/scripts/research_sources.py preflight \
   --require xiaohongshu
 ```
 
-`preflight` 会检查三个插件 MCP 的进程启动、`initialize`、`tools/list` 与预期工具契约，并默认执行只读上游 smoke query；同时检查飞猪 CLI 到供应商 MCP API、Open-Meteo 真实请求，以及小红书依赖与登录态。输出不包含凭证值，状态为 `ready`、`degraded` 或 `unavailable`。`--require` 可重复传入，仅当本次行程必需来源未就绪时返回非零；其他故障标为降级并按来源策略使用 fallback。`--skip-upstream` 只用于离线诊断，结果固定为 `degraded`，不能作为深度规划开始的依据。
+`preflight` 会检查四个插件 MCP 的 `initialize`、`tools/list` 与预期工具契约，并默认执行只读上游 smoke query；同时检查飞猪 CLI 到供应商 MCP API、Open-Meteo 真实请求，以及小红书 MCP 的真实登录态。输出不包含凭证值，状态为 `ready`、`degraded` 或 `unavailable`。`--require` 可重复传入，仅当本次行程必需来源未就绪时返回非零；其他故障标为降级并按来源策略使用 fallback。`--skip-upstream` 只用于离线诊断，结果固定为 `degraded`，不能作为深度规划开始的依据。
 
 可用来源标识为 `amap-maps`、`variflight-aviation`、`variflight-tripmatch`、`flyai`、`open-meteo` 和 `xiaohongshu`。只有实际涉及航班时才要求 Aviation；铁路或空铁联运要求 Tripmatch；中国境内地图要求高德。保留的 `capabilities` 命令只用于展示适配器、凭证和登录要求，`adapter_available=true` 不代表实时健康。
 
@@ -31,7 +31,7 @@ python3 skills/travel-planning/scripts/research_sources.py preflight \
 | 高德 | `$amap-maps` 引导的官方 `@amap/amap-maps-mcp-server@0.0.8` + Web 服务 API + 无 Key 路线页 iframe | MCP/API 的 POI 与算路需要 Key；页面路线展示不需要 |
 | OSM/Nominatim | 低频公开地点 API | 境外入口候选，不做批量抓取 |
 | Open-Meteo | 公开天气 API | 近期预报；中国预警回到中央气象台 |
-| 小红书 | `autoclaw-cc/xiaohongshu-skills` 通用 Skill/CLI + 用户 Chrome 扩展 | 旅行研究默认只读；写操作必须来自用户明确请求；不绕过风控 |
+| 小红书 | 固定 `xpzouying/xiaohongshu-mcp@v2.5.0` 的本地 Streamable HTTP MCP + 独立浏览器 | 不需要 Chrome 扩展；首次由用户扫码登录；旅行研究默认只读；不绕过风控 |
 
 ## 飞猪与飞常准
 
@@ -171,9 +171,9 @@ python3 skills/travel-planning/scripts/research_sources.py amap-route \
 python3 skills/travel-planning/scripts/research_sources.py amap-place \
   --city "杭州" --keywords "灵隐寺出口 杭帮菜"
 
-python3 skills/xiaohongshu/scripts/cli.py search-feeds \
+python3 skills/travel-planning/scripts/research_sources.py xhs-search \
   --keyword "杭州 灵隐 餐厅 店名 排队 口味" \
-  --sort-by 最新 --publish-time 半年内
+  --sort-by latest --publish-time half_year
 ```
 
 高德地点结果用于确认分店、POI、地址、坐标、电话和平台入口；再用 `amap-route` 分别查询“上一站→餐厅”和“餐厅→下一站”。营业、人均和菜单需从商家官方或可靠餐饮详情页获取，查询不到时保留带店名、日期和待核字段的手动入口。小红书只用于近期口味、份量、排队、服务和推广风险；每条被计入共识的笔记都保存原帖链接，不能用小红书互动数替代餐厅评分。
@@ -245,16 +245,17 @@ python3 skills/travel-planning/scripts/research_sources.py fallback --kind attra
 
 ## 小红书
 
-首次使用按[小红书通用能力集成](xiaohongshu-integration.md)安装上游 Skill，并由用户本人加载 Chrome 扩展和完成登录。常用命令：
+首次使用按[小红书 MCP 集成](xiaohongshu-integration.md)安装并启动固定版本服务；它使用独立浏览器，不需要 Chrome 扩展。首次登录由用户本人扫码完成。常用命令：
 
 ```bash
 python3 skills/xiaohongshu/scripts/setup.py status
-python3 skills/xiaohongshu/scripts/cli.py check-login
-python3 skills/xiaohongshu/scripts/cli.py search-feeds \
+python3 skills/xiaohongshu/scripts/setup.py start
+python3 skills/travel-planning/scripts/research_sources.py xhs-login-status
+python3 skills/travel-planning/scripts/research_sources.py xhs-search \
   --keyword "目的地 月份 日落 入口 避坑" \
-  --sort-by 最新 --publish-time 半年内
-python3 skills/xiaohongshu/scripts/cli.py get-feed-detail \
-  --feed-id "<feed-id>" --xsec-token "<临时令牌>"
+  --sort-by latest --publish-time half_year
+python3 skills/travel-planning/scripts/research_sources.py xhs-detail \
+  --note-id "<feed-id>"
 ```
 
-上游搜索会返回详情读取所需的临时令牌。只能在当前查询链内部使用，不得展示或归档；旅行 workspace 只保存公开来源标识或链接和研究摘要，不能复制用户数据目录中的小红书运行状态。
+上游搜索会返回详情读取所需的临时令牌；适配器只把它存入权限为 `0600` 的用户数据缓存。令牌只能在当前查询链内部使用，不得展示或归档；旅行 workspace 只保存公开来源标识或链接和研究摘要，不能复制用户数据目录中的小红书运行状态。

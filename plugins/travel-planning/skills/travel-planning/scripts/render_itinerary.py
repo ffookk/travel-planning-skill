@@ -76,7 +76,7 @@ def amap_embed_url(route: dict[str, Any]) -> str:
         "from[name]": route.get("from") or "起点",
         "to[lnglat]": map_route["destination"],
         "to[name]": route.get("to") or "终点",
-        "src": "travel-itinerary-page",
+        "src": "travel-planning",
         "callnative": "0",
         "innersrc": "uriapi",
     })

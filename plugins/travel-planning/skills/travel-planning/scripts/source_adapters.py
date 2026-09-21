@@ -18,7 +18,9 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[3]
@@ -315,7 +317,7 @@ def probe_mcp_stdio(
                     "protocolVersion": "2024-11-05",
                     "capabilities": {},
                     "clientInfo": {
-                        "name": "travel-itinerary-page-preflight",
+                        "name": "travel-planning-preflight",
                         "version": "1.0",
                     },
                 },
@@ -424,6 +426,165 @@ def call_mcp_stdio(
     finally:
         _stop_mcp_process(process)
         stderr_file.close()
+
+
+def _parse_mcp_http_body(body: str) -> dict[str, Any] | None:
+    clean = body.strip()
+    if not clean:
+        return None
+    candidates = [
+        line.removeprefix("data:").strip()
+        for line in clean.splitlines()
+        if line.startswith("data:")
+    ]
+    for candidate in reversed(candidates or [clean]):
+        try:
+            payload = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            return payload
+    raise AdapterError("invalid_response", "HTTP MCP 未返回有效 JSON-RPC")
+
+
+def _mcp_http_exchange(
+    endpoint: str,
+    payload: dict[str, Any],
+    timeout: int,
+    *,
+    session_id: str | None = None,
+    auth_token: str | None = None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    parsed = urlparse(endpoint)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise AdapterError("invalid_configuration", f"无效的 HTTP MCP 地址：{endpoint}")
+    headers = {
+        "Accept": "application/json, text/event-stream",
+        "Content-Type": "application/json",
+        "User-Agent": "travel-planning-mcp-preflight/1.0",
+    }
+    if session_id:
+        headers["Mcp-Session-Id"] = session_id
+    if auth_token:
+        headers["Authorization"] = f"Bearer {auth_token}"
+    request = Request(
+        endpoint,
+        data=json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            body = response.read().decode("utf-8", errors="replace")
+            returned_session = response.headers.get("Mcp-Session-Id") or session_id
+    except HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        message = body.strip() or f"HTTP {error.code}"
+        raise AdapterError(_classify_failure(f"HTTP {error.code}: {message}"), message) from error
+    except (URLError, OSError) as error:
+        raise AdapterError("runtime_unavailable", f"无法连接 HTTP MCP {endpoint}：{error}") from error
+    return _parse_mcp_http_body(body), returned_session
+
+
+def _initialize_mcp_http(
+    endpoint: str, timeout: int, auth_token: str | None = None
+) -> tuple[dict[str, Any], str | None]:
+    initialized, session_id = _mcp_http_exchange(
+        endpoint,
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {"name": "travel-planning-preflight", "version": "1.0"},
+            },
+        },
+        timeout,
+        auth_token=auth_token,
+    )
+    if not initialized:
+        raise AdapterError("invalid_response", "HTTP MCP initialize 未返回结果")
+    if "error" in initialized:
+        raise AdapterError("provider_error", str(initialized["error"]))
+    _mcp_http_exchange(
+        endpoint,
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        timeout,
+        session_id=session_id,
+        auth_token=auth_token,
+    )
+    return initialized, session_id
+
+
+def probe_mcp_http(
+    endpoint: str,
+    timeout: int,
+    expected_tools: set[str] | None = None,
+    auth_token: str | None = None,
+) -> dict[str, Any]:
+    """Verify HTTP MCP initialize and tools/list without mutating upstream state."""
+    started_at = time.monotonic()
+    initialized, session_id = _initialize_mcp_http(endpoint, timeout, auth_token)
+    listed, _ = _mcp_http_exchange(
+        endpoint,
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+        timeout,
+        session_id=session_id,
+        auth_token=auth_token,
+    )
+    if not listed:
+        raise AdapterError("invalid_response", "HTTP MCP tools/list 未返回结果")
+    if "error" in listed:
+        raise AdapterError("provider_error", str(listed["error"]))
+    tools = listed.get("result", {}).get("tools", [])
+    names = sorted(
+        str(tool["name"])
+        for tool in tools
+        if isinstance(tool, dict) and tool.get("name")
+    )
+    missing = sorted((expected_tools or set()) - set(names))
+    if missing:
+        raise AdapterError("contract_mismatch", f"MCP tools/list 缺少预期工具：{', '.join(missing)}")
+    initialized_result = initialized.get("result") or {}
+    return {
+        "status": "ready",
+        "protocol_version": initialized_result.get("protocolVersion"),
+        "server_info": initialized_result.get("serverInfo"),
+        "tool_count": len(names),
+        "tools": names,
+        "latency_ms": round((time.monotonic() - started_at) * 1000),
+    }
+
+
+def call_mcp_http(
+    endpoint: str,
+    tool: str,
+    arguments: dict[str, Any],
+    timeout: int,
+    auth_token: str | None = None,
+) -> Any:
+    initialized, session_id = _initialize_mcp_http(endpoint, timeout, auth_token)
+    request_id = 2 if initialized.get("id") == 1 else 3
+    response, _ = _mcp_http_exchange(
+        endpoint,
+        {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "tools/call",
+            "params": {"name": tool, "arguments": arguments},
+        },
+        timeout,
+        session_id=session_id,
+        auth_token=auth_token,
+    )
+    if not response:
+        raise AdapterError("invalid_response", f"HTTP MCP 工具 {tool} 未返回结果")
+    if "error" in response:
+        message = json.dumps(response["error"], ensure_ascii=False)
+        raise AdapterError(_classify_failure(message), message)
+    return _mcp_result_payload(response.get("result") or {})
 
 
 def _canonical_hash(value: Any) -> str:

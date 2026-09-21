@@ -38,7 +38,7 @@ class PluginLayoutTest(unittest.TestCase):
         servers = manifest["mcpServers"]
         self.assertEqual(
             set(servers),
-            {"amap-maps", "variflight-aviation", "variflight-tripmatch"},
+            {"amap-maps", "variflight-aviation", "variflight-tripmatch", "xiaohongshu-mcp"},
         )
         self.assertEqual(
             servers["amap-maps"]["args"],
@@ -58,15 +58,20 @@ class PluginLayoutTest(unittest.TestCase):
                 "tripmatch",
             ],
         )
+        self.assertEqual(
+            servers["xiaohongshu-mcp"],
+            {"type": "http", "url": "http://127.0.0.1:18060/mcp"},
+        )
 
-    def test_xiaohongshu_capability_is_vendored_inside_its_skill(self) -> None:
+    def test_xiaohongshu_uses_pinned_http_mcp_without_extension_vendor(self) -> None:
         required = (
-            ROOT / "skills/xiaohongshu/scripts/upstream/uv.lock",
-            ROOT / "skills/xiaohongshu/scripts/upstream/scripts/cli.py",
-            ROOT / "skills/xiaohongshu/assets/extension/manifest.json",
-            ROOT / "skills/xiaohongshu/references/upstream/root.md",
+            ROOT / "skills/xiaohongshu/scripts/setup.py",
+            ROOT / "skills/xiaohongshu/references/upstream.lock.json",
+            ROOT / "skills/xiaohongshu/references/tool-routing.md",
         )
         self.assertTrue(all(path.is_file() for path in required))
+        self.assertFalse((ROOT / "skills/xiaohongshu/assets").exists())
+        self.assertFalse((ROOT / "skills/xiaohongshu/scripts/upstream").exists())
 
     def test_runtime_secrets_are_ignored_by_source_control(self) -> None:
         self.assertTrue((ROOT / "config/sources.example.env").is_file())

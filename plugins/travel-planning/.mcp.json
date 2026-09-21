@@ -38,6 +38,10 @@
         "TRAVEL_SOURCES_CONFIG",
         "XDG_CONFIG_HOME"
       ]
+    },
+    "xiaohongshu-mcp": {
+      "type": "http",
+      "url": "http://127.0.0.1:18060/mcp"
     }
   }
 }
