@@ -1,0 +1,58 @@
+{
+  "schema_version": "travel-research-result/v1",
+  "template_version": 3,
+  "template_digest": "COPY_FROM_ASSIGNMENT",
+  "task_id": "COPY_FROM_ASSIGNMENT",
+  "status": "complete",
+  "input_revision": "COPY_FROM_ASSIGNMENT",
+  "summary": "",
+  "entities": {
+    "restaurants": [],
+    "restaurant_snapshots": [],
+    "meal_candidate_sets": [],
+    "meal_options": []
+  },
+  "catalog_candidates": [
+    {
+      "entity_id": "restaurant-stable-id",
+      "entity_type": "restaurant",
+      "canonical_name": "",
+      "aliases": [],
+      "tags": [],
+      "location": {},
+      "reusable": {
+        "physical_address": "",
+        "coordinates": "",
+        "amap_poi_id": "",
+        "other_platform_ids": {},
+        "phone": "",
+        "signature_dishes": [],
+        "cuisine": [],
+        "meal_types": [],
+        "service_modes": [],
+        "dietary_tags": [],
+        "facilities": [],
+        "parking_profile": "",
+        "official_endpoints": {},
+        "image_refs": []
+      },
+      "seasonal_profiles": [],
+      "verification_hints": [],
+      "source_refs": [
+        {
+          "source_id": "",
+          "title": "",
+          "url": "https://",
+          "kind": "official_or_stable_platform",
+          "authority": "operator_or_platform",
+          "last_verified_at": "",
+          "status": "active"
+        }
+      ]
+    }
+  ],
+  "event_bindings": [],
+  "constraints": [],
+  "unresolved": [],
+  "source_ids": []
+}

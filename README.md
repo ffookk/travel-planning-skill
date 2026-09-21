@@ -1,0 +1,58 @@
+# Travel Itinerary Page Plugin
+
+面向 Codex 与 Claude Code 的旅行研究插件仓库。仓库通过 `.agents/plugins/marketplace.json` 暴露一个位于 `plugins/travel-planning/` 的插件，把行程规划 Skill、通用小红书能力、飞猪/飞常准、地图、天气和页面生成工具打包为一个交付单元，同时保留各数据源最合适的原生接入方式。
+
+| 能力 | 复用方式 |
+| --- | --- |
+| 小红书 | 固定版本 `autoclaw-cc/xiaohongshu-skills`，Skill + CLI + Chrome 扩展 |
+| 飞猪 FlyAI | 插件内单一 `flyai` Skill + 固定版本官方 CLI，连接供应商 MCP API |
+| 飞常准 | 单一 `variflight` Skill + Aviation 与 Tripmatch stdio MCP Server |
+| 高德 | `amap-maps` Skill + 官方 stdio MCP Server + Web 服务 API |
+| OpenStreetMap、Open-Meteo | 公开 API |
+| 行程生成 | 插件内 `travel-planning` Skill 与 Python 工具 |
+
+插件统一的是安装、发现、权限说明和旅行编排，不强制把已有 CLI 或 API 重写成 MCP。
+
+## 插件入口
+
+- 仓库市场：`.agents/plugins/marketplace.json`
+- 项目启用配置：`.codex/config.toml`
+- 插件目录：`plugins/travel-planning/`
+- Codex：`plugins/travel-planning/.codex-plugin/plugin.json`
+- Claude Code：`plugins/travel-planning/.claude-plugin/plugin.json`
+- 可移植清单：`plugins/travel-planning/plugin.json`
+- MCP 声明：`plugins/travel-planning/.mcp.json`
+- Skills：`plugins/travel-planning/skills/`
+- 插件级 Provider 启动器与环境加载：`plugins/travel-planning/scripts/providers/`、`plugins/travel-planning/scripts/runtime_env.py`
+- 可提交的环境变量模板：`plugins/travel-planning/config/sources.example.env`
+- 本机开发配置：`config/sources.local.env`（已忽略，位于可安装插件目录之外）
+
+插件清单注册三个 MCP Server：高德地图 `amap-maps`、飞常准 `variflight-aviation` 和 `variflight-tripmatch`。源码开发时，插件级启动器读取仓库根目录的本机配置；安装包回退到用户级 `~/.config/travel-planning/sources.local.env`，并兼容读取旧的 `~/.config/travel-itinerary-page/sources.local.env`。各 Provider 凭证彼此隔离；高德同时兼容已有的 `AMAP_API_KEY`，并只向官方 MCP 进程映射为 `AMAP_MAPS_API_KEY`。Skill 目录不保存环境配置或 Provider 启动器。
+
+路线确认、进入深度规划前，主 Skill 会运行统一 `preflight`：三个 MCP 执行协议握手、工具发现与只读上游探测，飞猪、Open-Meteo 和小红书也分别验证真实运行态。调用方通过重复的 `--require` 标记本次行程必需来源；必需来源失败时命令返回非零，非必需来源失败则明确降级并保留 fallback。
+
+## 小红书首次初始化
+
+```bash
+cd plugins/travel-planning
+python3 skills/xiaohongshu/scripts/setup.py install
+python3 skills/xiaohongshu/scripts/setup.py status
+```
+
+命令会返回 `extension_path`。在 Chrome 的 `chrome://extensions/` 中开启开发者模式并加载该目录，然后执行：
+
+```bash
+cd plugins/travel-planning
+python3 skills/xiaohongshu/scripts/cli.py check-login
+```
+
+小红书上游能力源码、Chrome 扩展和原始 Skill 路由已直接随插件放在 `skills/xiaohongshu/`。初始化只把锁定的 Python 虚拟环境放入用户数据目录 `~/.local/share/travel-planning/xiaohongshu-skills/`（可用 `TRAVEL_XHS_HOME` 覆盖），并在新目录尚不存在时兼容复用旧目录；浏览器状态和临时令牌不会进入插件源码。
+
+插件按供应商或用户任务域暴露五个 Skill：`travel-planning` 负责跨来源旅行编排，`xiaohongshu`、`flyai`、`amap-maps`、`variflight` 分别负责对应通用能力。高德和飞常准 Skill 只引导已注册 MCP 的工具选择与参数约束，不复制 Provider 实现；上游小红书的认证、探索、发布、互动和内容运营仍只是内部路由，不会作为五个独立 Skill 安装。
+
+## 验证
+
+```bash
+python3 /Users/mater/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/travel-planning
+(cd plugins/travel-planning && python3 -m unittest discover -s tests -p 'test_*.py')
+```

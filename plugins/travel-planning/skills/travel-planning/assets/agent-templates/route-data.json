@@ -1,0 +1,49 @@
+{
+  "schema_version": "travel-research-result/v1",
+  "template_version": 4,
+  "template_digest": "COPY_FROM_ASSIGNMENT",
+  "task_id": "COPY_FROM_ASSIGNMENT",
+  "status": "complete",
+  "input_revision": "COPY_FROM_ASSIGNMENT",
+  "summary": "",
+  "source_snapshot_ids": [],
+  "entities": {
+    "transport_edges": [],
+    "intercity_options": [],
+    "route_anchors": [],
+    "meal_baseline_routes": [],
+    "meal_route_evaluations": []
+  },
+  "catalog_candidates": [
+    {
+      "entity_id": "route-anchor-stable-id",
+      "entity_type": "route_anchor",
+      "canonical_name": "",
+      "aliases": [],
+      "tags": [],
+      "location": {},
+      "reusable": {
+        "coordinates": "",
+        "entrance_or_exit_name": "",
+        "access_modes": []
+      },
+      "seasonal_profiles": [],
+      "verification_hints": [],
+      "source_refs": [
+        {
+          "source_id": "",
+          "title": "",
+          "url": "https://",
+          "kind": "map",
+          "authority": "map_provider",
+          "last_verified_at": "",
+          "status": "active"
+        }
+      ]
+    }
+  ],
+  "event_bindings": [],
+  "constraints": [],
+  "unresolved": [],
+  "source_ids": []
+}

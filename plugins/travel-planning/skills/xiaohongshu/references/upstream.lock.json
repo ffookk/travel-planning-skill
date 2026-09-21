@@ -1,0 +1,11 @@
+{
+  "name": "autoclaw-cc/xiaohongshu-skills",
+  "repository": "https://github.com/autoclaw-cc/xiaohongshu-skills.git",
+  "commit": "b043748282a57e347c52f517dfb59819121134ab",
+  "license": "MIT",
+  "integration": "vendored Skill, CLI and Chrome extension",
+  "installer": "skills/xiaohongshu/scripts/setup.py",
+  "local_patches": [
+    "extension popup uses the plugin wrapper command"
+  ]
+}

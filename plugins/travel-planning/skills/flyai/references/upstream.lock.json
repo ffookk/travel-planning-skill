@@ -1,0 +1,10 @@
+{
+  "name": "alibaba-flyai/flyai-skill",
+  "repository": "https://github.com/alibaba-flyai/flyai-skill.git",
+  "commit": "86fe2cc3e25464d0e0bd6a769b27b5f9f3b04128",
+  "skill_version": "1.0.15",
+  "cli_package": "@fly-ai/flyai-cli",
+  "cli_version": "1.0.16",
+  "license": "MIT",
+  "integration": "vendored Skill instructions with pinned CLI runtime"
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://travel-itinerary-page.local/schemas/travel-source-error.schema.json",
+  "title": "Travel Source Query Error",
+  "type": "object",
+  "required": ["schema_version", "status", "failure_kind", "message", "checked_at"],
+  "properties": {
+    "schema_version": {"const": "travel-source-error/v1"},
+    "status": {"const": "error"},
+    "failure_kind": {
+      "enum": [
+        "credential_missing",
+        "authorization_failed",
+        "quota_exceeded",
+        "runtime_unavailable",
+        "timeout",
+        "invalid_response",
+        "workspace_error",
+        "provider_error",
+        "unsupported_provider"
+      ]
+    },
+    "message": {"type": "string", "minLength": 1},
+    "checked_at": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": false
+}

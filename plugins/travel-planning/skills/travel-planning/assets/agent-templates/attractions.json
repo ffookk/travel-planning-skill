@@ -1,0 +1,72 @@
+{
+  "schema_version": "travel-research-result/v1",
+  "template_version": 1,
+  "template_digest": "COPY_FROM_ASSIGNMENT",
+  "task_id": "COPY_FROM_ASSIGNMENT",
+  "status": "complete",
+  "input_revision": "COPY_FROM_ASSIGNMENT",
+  "summary": "",
+  "entities": {
+    "attractions": [
+      {
+        "id": "attraction-stable-id",
+        "name": "",
+        "official": {
+          "physical_address": "",
+          "homepage_url": "https://",
+          "booking_url": null,
+          "booking_status": "not_applicable",
+          "notice_url": "https://",
+          "checked_at": ""
+        },
+        "operations": {
+          "applicable_date": "",
+          "opening_hours": "",
+          "last_entry": "",
+          "temporary_notice": "",
+          "checked_at": "",
+          "source_ids": []
+        },
+        "entrance": {},
+        "exit": {},
+        "checkpoint_blueprint": [],
+        "cost_items": [],
+        "reservation": {},
+        "source_ids": []
+      }
+    ]
+  },
+  "catalog_candidates": [
+    {
+      "entity_id": "attraction-stable-id",
+      "entity_type": "attraction",
+      "canonical_name": "",
+      "aliases": [],
+      "tags": [],
+      "location": {},
+      "reusable": {
+        "official_endpoints": {},
+        "entrances": [],
+        "checkpoint_blueprint": [],
+        "typical_visit_duration": ""
+      },
+      "seasonal_profiles": [],
+      "verification_hints": [],
+      "source_refs": [
+        {
+          "source_id": "",
+          "title": "",
+          "url": "https://",
+          "kind": "official",
+          "authority": "attraction_operator",
+          "last_verified_at": "",
+          "status": "active"
+        }
+      ]
+    }
+  ],
+  "event_bindings": [],
+  "constraints": [],
+  "unresolved": [],
+  "source_ids": []
+}

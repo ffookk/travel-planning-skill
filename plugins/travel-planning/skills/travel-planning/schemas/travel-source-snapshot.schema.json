@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://travel-itinerary-page.local/schemas/travel-source-snapshot.schema.json",
+  "title": "Travel Source Snapshot",
+  "description": "Provider-neutral quote, operational status, or lookup snapshot for travel inventory.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "snapshot_id",
+    "snapshot_kind",
+    "status",
+    "provider",
+    "product_type",
+    "tool",
+    "query",
+    "freshness",
+    "items",
+    "count",
+    "raw_response_hash",
+    "source",
+    "disclaimer"
+  ],
+  "properties": {
+    "schema_version": {"const": "travel-source-snapshot/v1"},
+    "snapshot_id": {"type": "string", "pattern": "^[a-f0-9]{24}$"},
+    "snapshot_kind": {"enum": ["quote", "operational", "lookup"]},
+    "status": {"enum": ["platform_reported", "no_results"]},
+    "provider": {
+      "type": "object",
+      "required": ["id", "name", "authority", "transport", "package", "version"],
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "authority": {"enum": ["official_platform", "official_provider"]},
+        "transport": {"enum": ["cli_to_vendor_mcp_api", "mcp_stdio"]},
+        "package": {"type": "string"},
+        "version": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "product_type": {"enum": ["flight", "train", "hotel", "air_rail_transfer", "train_station"]},
+    "tool": {"type": "string", "minLength": 1},
+    "query": {"type": "object"},
+    "freshness": {
+      "type": "object",
+      "required": ["checked_at", "expires_at", "dynamic"],
+      "properties": {
+        "checked_at": {"type": "string", "format": "date-time"},
+        "expires_at": {"type": "string", "format": "date-time"},
+        "dynamic": {"const": true}
+      },
+      "additionalProperties": false
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["offer_id", "name", "price", "availability", "action_link"],
+        "properties": {
+          "offer_id": {"type": "string", "minLength": 1},
+          "name": {"type": ["string", "null"]},
+          "price": {
+            "type": "object",
+            "required": ["amount", "currency", "display", "basis"],
+            "properties": {
+              "amount": {"type": ["number", "null"]},
+              "currency": {"type": ["string", "null"]},
+              "display": {"type": ["string", "null"]},
+              "basis": {"type": "string"}
+            },
+            "additionalProperties": false
+          },
+          "availability": {
+            "type": "object",
+            "required": ["status", "remaining"],
+            "properties": {
+              "status": {"type": "string"},
+              "remaining": {"type": ["string", "number", "integer", "null"]}
+            },
+            "additionalProperties": true
+          },
+          "action_link": {
+            "oneOf": [
+              {"type": "string", "pattern": "^https://"},
+              {"type": "null"}
+            ]
+          },
+          "departure": {"type": "object"},
+          "arrival": {"type": "object"},
+          "segments": {"type": "array"},
+          "total_duration": {},
+          "location": {"type": "object"},
+          "hotel": {"type": "object"},
+          "operational": {"type": "object"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "count": {"type": "integer", "minimum": 0},
+    "raw_response_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "source": {
+      "type": "object",
+      "required": ["title", "url", "kind"],
+      "properties": {
+        "title": {"type": "string"},
+        "url": {"type": "string", "pattern": "^https://"},
+        "kind": {"enum": ["official_platform_api", "official_provider_api"]}
+      },
+      "additionalProperties": false
+    },
+    "disclaimer": {"type": "string", "minLength": 1}
+  },
+  "additionalProperties": false
+}
