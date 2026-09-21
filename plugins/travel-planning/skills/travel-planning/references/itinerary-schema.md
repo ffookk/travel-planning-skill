@@ -1,6 +1,13 @@
 # 行程数据结构
 
-`itinerary.json` 使用 UTF-8。本文给出生成行程所需的字段规则；动态交通、住宿和餐厅对象还要遵守 `schemas/` 中对应的机器契约。只有需要排查渲染器或查看完整成品形态时，才读取[完整示例](../assets/example-itinerary.json)。最终以 `render_itinerary.py` 和 `audit_itinerary.py` 的校验结果为准。
+`itinerary.json` 使用 UTF-8。主 Agent 先按 `schemas/itinerary-plan.schema.json` 编写 `state/itinerary-plan.json`，再由通用 `assemble_itinerary.py` 生成最终结构，不直接手写完整成品，也不为单次行程创建 Python。本文给出生成行程所需的字段规则；动态交通、住宿和餐厅对象还要遵守 `schemas/` 中对应的机器契约。只有需要排查渲染器或查看完整成品形态时，才读取[完整示例](../assets/example-itinerary.json)。最终以 `render_itinerary.py` 和 `audit_itinerary.py` 的校验结果为准。
+
+## 装配计划
+
+- `research_state_sha256` 必须等于当前 `state/research.json` 的 SHA-256；重新 merge 后必须重新审视计划并更新摘要。
+- `collections` 声明目标集合来自哪个任务结果或 workspace 文件、对象路径和选用 ID；通用装配器负责来源、快照、字段归一化和引用绑定。
+- `attraction_events`、`meal_configs`、`days[]`、`booking_tasks[]` 和 `planning` 保存本次旅行的语义决策。时间、采用候选和降级策略属于 JSON 数据，不属于 Python 代码。
+- 餐厅 `time_window` 默认继承研究阶段的候选集合，逐日展示时间写在 `days[].events[]`；只有研究餐窗本身改变时才设置 `contract_time_window` 并重新核验动态快照。
 
 ## 顶层结构
 

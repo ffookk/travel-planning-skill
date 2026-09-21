@@ -33,6 +33,7 @@ python3 skills/travel-planning/scripts/research_workspace.py init \
 |-- evidence/<task_id>/
 |-- state/
 |   |-- research.json
+|   |-- itinerary-plan.json
 |   |-- sources.json
 |   |-- source-snapshots.json
 |   `-- archive.json
@@ -129,5 +130,20 @@ python3 skills/travel-planning/scripts/research_workspace.py merge \
 `merge` 默认要求所有已分配任务提交，并重新校验 assignment 身份、输入版本、结果契约、来源和快照绑定。它生成轻量的 `travel-research-state/v2` 中央状态：`tasks[]` 只保留摘要与结果路径，完整任务仍从 `results/<task_id>.json` 按需读取；来源、快照和档案分别通过 `indexes` 指向 `state/sources.json`、`state/source-snapshots.json` 和 `state/archive.json`。
 
 `global_state.shared_entities[]` 按 `entity_id` 去重。互补对象字段自动合并，`source_ids`、别名和标签去重并集；同一字段冲突时按 `submitted_at` 较新的任务值覆盖，并在 `global_state.conflicts[]` 保留双方值、任务和处理规则，不需要人工晋升。主 Agent 另写候选行程和审查结果；只有 `blocking=[]` 才生成最终 HTML。
+
+## 声明式装配
+
+`merge` 后，主 Agent 将选用实体、景点执行配置、餐窗、逐日事件、预约任务和降级策略写入 `state/itinerary-plan.json`。计划使用 `itinerary-plan/v1`，并通过 `research_state_sha256` 绑定当前 `state/research.json`；Agent 只写 JSON 决策，不为目的地创建 Python。
+
+```bash
+python3 skills/travel-planning/scripts/assemble_itinerary.py \
+  --workspace ".travel-research/hangzhou-2026-10" \
+  --print-research-sha256
+
+python3 skills/travel-planning/scripts/assemble_itinerary.py \
+  --workspace ".travel-research/hangzhou-2026-10"
+```
+
+通用装配器从 `collections` 声明加载 `results/` 或 `state/` 中的对象，按稳定 ID 选择和绑定，生成 `artifacts/itinerary.json`。研究状态变化、选定路线不一致、实体缺失、快照冲突或事件 ID 重复都会停止装配。完整字段合同见 `schemas/itinerary-plan.schema.json`。
 
 主 Agent 只载入合并后的必要摘要，需要证据时按 `task_id`、`source_id` 或 `record_id` 定向读取。二进制文档先看元数据和摘要，再决定是否打开。

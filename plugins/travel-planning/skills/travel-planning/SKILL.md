@@ -65,7 +65,7 @@ python3 skills/travel-planning/scripts/research_sources.py preflight \
 
 前置采集完成后，按稳定 ID 合并为 `itinerary.json`。先生成只含硬时间、门到门交通、餐窗和最晚离开的候选事件流，立即检查时间空间冲突；无法同时满足时按“换交通方式 → 缩短次要景点 → 取消次要活动”降级，不把冲突留成一句提醒。
 
-生成最终页面前必须满足：
+主 Agent 将选用实体、逐日事件、时间窗和降级策略写入 `state/itinerary-plan.json`，使用通用装配器生成 `artifacts/itinerary.json`；不得为单次行程编写 Python 装配脚本。生成最终页面前必须满足：
 
 - 每个事件有稳定 `id`，并通过 ID 引用相应景点、交通、住宿、餐饮、天气、预约和费用数据。
 - 景点事件包含结构化开放与预约信息、入口、出口、内部 checkpoints、最晚离开和费用；官方主页、公告、预约入口与实体地址分开。
@@ -76,8 +76,9 @@ python3 skills/travel-planning/scripts/research_sources.py preflight \
 确定性审查至少运行两次：候选事件流完成后检查硬时间与交通，动态候选绑定完成后执行最终审查；随后由独立审查 Agent 检查事实冲突和语义可执行性。阻断项清零后才能渲染最终页面：
 
 ```bash
-python3 skills/travel-planning/scripts/audit_itinerary.py itinerary.json --output state/audit.json
-python3 skills/travel-planning/scripts/render_itinerary.py itinerary.json itinerary.html
+python3 skills/travel-planning/scripts/assemble_itinerary.py --workspace ".travel-research/<trip-id>"
+python3 skills/travel-planning/scripts/audit_itinerary.py ".travel-research/<trip-id>/artifacts/itinerary.json" --output ".travel-research/<trip-id>/artifacts/audit.json"
+python3 skills/travel-planning/scripts/render_itinerary.py ".travel-research/<trip-id>/artifacts/itinerary.json" ".travel-research/<trip-id>/artifacts/itinerary.html"
 ```
 
 ## 页面与交付

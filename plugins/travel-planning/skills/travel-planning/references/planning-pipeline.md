@@ -40,7 +40,15 @@
 3. 生成只含硬时间、门到门交通、餐窗和最晚离开的候选事件流，立即执行时间空间预审。
 4. 冲突时先重排，再按“换交通方式 → 缩短次要景点 → 取消次要活动”降级；必要时创建 `gap-*` 修补任务。
 5. 插入住宿、行李、正餐和休息，将天气、费用与预约通过稳定 ID 注入对应事件或 checkpoint。
-6. 将字段冲突的采用值、理由和来源写入 `state/merge-decisions.json`，生成 `artifacts/itinerary.json`。预算只由事件费用派生。
+6. 将字段冲突的采用值、理由和来源写入 `state/merge-decisions.json`；将选用实体、逐日事件、时间窗和降级策略写入 `state/itinerary-plan.json`，不得为单次行程生成 Python 装配脚本。
+7. 使用通用装配器校验计划绑定的 `research_state_sha256`，再生成 `artifacts/itinerary.json`。预算只由事件费用派生。
+
+```bash
+python3 skills/travel-planning/scripts/assemble_itinerary.py \
+  --workspace ".travel-research/hangzhou-2026-10"
+```
+
+研究状态重新 `merge` 后摘要会变化，旧计划必须停止装配；先重新完成受影响的路线决策，再更新计划中的 `research_state_sha256`。可用 `--print-research-sha256` 读取当前摘要。
 
 事件卡只保留会改变时间、地点、动作、费用或备选的信息，不放目的地百科、泛化提醒、研究过程或重复来源说明。
 

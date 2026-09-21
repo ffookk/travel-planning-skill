@@ -47,6 +47,18 @@ class RenderItineraryTest(unittest.TestCase):
         self.assertIn("西湖经典线", html)
         self.assertNotIn("先研究，再排行程", html)
         self.assertNotIn("天气与复核", html)
+        self.assertNotIn('<section class="overview">', html)
+        self.assertNotIn("规划说明", html)
+
+    def test_dates_and_times_render_inside_one_compact_timeline(self) -> None:
+        html = render_itinerary.build(self.load_example())
+        self.assertIn('class="day-dot"', html)
+        self.assertIn('class="event-body"><div class="time">', html)
+        self.assertIn("D1 · 周六 · 2026-10-17", html)
+        self.assertNotIn('<nav class="tabs"', html)
+        self.assertNotIn("const tabs=", html)
+        self.assertNotIn("dayObserver", html)
+        self.assertIn(".event{position:relative;display:grid;grid-template-columns:24px minmax(0,1fr)", html)
 
     def test_bound_inventory_snapshot_is_validated_and_rendered_in_event(self) -> None:
         data = self.load_example()
@@ -194,6 +206,12 @@ class RenderItineraryTest(unittest.TestCase):
         self.assertIn("查看餐厅到下一站路线", html)
         self.assertIn("查看灵隐杭帮面馆 A 官方相册", html)
         self.assertIn("https://www.xiaohongshu.com/explore/demo-lingyin-a-1", html)
+        self.assertIn(".restaurant-candidate:nth-child(2):last-child{grid-column:1/-1}", html)
+        self.assertIn('<article class="restaurant-candidate primary">', html)
+        self.assertIn('<details class="restaurant-candidate restaurant-candidate-backup">', html)
+        self.assertIn('<summary class="restaurant-candidate-head">', html)
+        self.assertIn('class="restaurant-toggle"', html)
+        self.assertNotIn('<details class="restaurant-candidate restaurant-candidate-backup" open', html)
 
     def test_embedded_checkpoint_meal_renders_full_candidate(self) -> None:
         html = render_itinerary.build(self.load_example())
@@ -426,6 +444,8 @@ class RenderItineraryTest(unittest.TestCase):
         self.assertIn("sort=dist", html)
         self.assertNotIn("security-code", html)
         self.assertIn("const mapObserver=new IntersectionObserver", html)
+        self.assertIn("mapObserver.unobserve(e.target)", html)
+        self.assertNotIn("unloadMap", html)
         self.assertIn("navigator.userAgentData?.mobile", html)
         self.assertIn('class="route-map-fullscreen"', html)
         self.assertIn("requestFullscreen", html)

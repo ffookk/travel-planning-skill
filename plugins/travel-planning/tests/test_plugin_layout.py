@@ -93,6 +93,12 @@ class PluginLayoutTest(unittest.TestCase):
             (ROOT / "skills/travel-planning/scripts/variflight_mcp_server.py").exists()
         )
 
+    def test_travel_planning_has_generic_assembler_contract(self) -> None:
+        skill = ROOT / "skills" / "travel-planning"
+        self.assertTrue((skill / "scripts" / "assemble_itinerary.py").is_file())
+        schema = json.loads((skill / "schemas" / "itinerary-plan.schema.json").read_text(encoding="utf-8"))
+        self.assertEqual(schema["properties"]["schema_version"]["const"], "itinerary-plan/v1")
+
     def test_legacy_top_level_integration_directories_are_absent(self) -> None:
         self.assertFalse((ROOT / "integrations").exists())
         self.assertFalse((ROOT / "third_party").exists())
