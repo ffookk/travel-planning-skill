@@ -1,6 +1,6 @@
 # 行程数据结构
 
-`itinerary.json` 使用 UTF-8。创建或修改它时，同时读取本文件与 [`example-itinerary.json`](example-itinerary.json)。示例用于展示可渲染形态，不覆盖本文的字段规则；动态交通、住宿和餐厅对象还要遵守 `schemas/` 中对应的机器契约。最终以 `render_itinerary.py` 和 `audit_itinerary.py` 的校验结果为准。
+`itinerary.json` 使用 UTF-8。本文给出生成行程所需的字段规则；动态交通、住宿和餐厅对象还要遵守 `schemas/` 中对应的机器契约。只有需要排查渲染器或查看完整成品形态时，才读取[完整示例](../assets/example-itinerary.json)。最终以 `render_itinerary.py` 和 `audit_itinerary.py` 的校验结果为准。
 
 ## 顶层结构
 
@@ -48,8 +48,13 @@
 - `sources[].kind` 建议使用 `official`、`transport_official`、`booking_platform`、`community` 或 `map`。社区内容只支持体验判断，不能单独证明营业、价格或交通规则。
 - 重要动态字段通过 `claims[]` 保存字段级证据；`status` 使用 `verified`、`platform_reported`、`community_consensus`、`estimated` 或 `to_recheck`。
 - `to_recheck` 对象至少提供一个可执行的 HTTPS `action_links[]`。链接标签包含地点、日期、车站或其他查询条件，`disclaimer` 说明待核字段和复核时间；不得只给无关首页。
-- 飞猪、飞常准等动态交通与住宿查询写入 `planning.source_snapshots[]`，遵守 [`travel-source-snapshot/v1`](live-source-schema.md)，并设置 `planning.inventory_contract_version=1`。候选通过 `inventory_refs[]` 的 `snapshot_id + offer_id + role` 关联，不得透传供应商私有响应。
+- 飞猪、飞常准等动态交通与住宿查询写入 `planning.source_snapshots[]`，遵守 `schemas/travel-source-snapshot.schema.json`，并设置 `planning.inventory_contract_version=1`。候选通过 `inventory_refs[]` 的 `snapshot_id + offer_id + role` 关联，不得透传供应商私有响应。
 - `inventory_refs[].role` 使用 `candidate_quote`、`operational_check` 或 `station_lookup`。中国铁路候选还要提供 `rail_verification`；最终阶段要求 `channel=12306` 且 `status=verified`，境外铁路使用相应运营方官方渠道。
+- 快照的 `snapshot_kind` 使用 `quote`、`operational` 或 `lookup`；状态 `platform_reported` 表示本次返回记录，`no_results` 表示成功响应但结果为空，不能改写成供应商故障。
+- 查询失败使用 `travel-source-error/v1`，遵守 `schemas/travel-source-error.schema.json`，不得伪装成空的成功快照。凭证、Cookie、授权头和临时令牌不得进入快照；原始响应只保留 SHA-256 哈希。
+- `items[]` 内的 `offer_id` 非空且唯一。价格同时保留 `amount`、`currency`、`basis` 和原始 `display`；只有供应商实际返回的 HTTPS 地址才能进入 `action_link`。
+- quote 默认 30 分钟、运行状态默认 15 分钟、lookup 默认 24 小时失效。已选候选过期时审查警告，`workflow.phase=final` 时作为阻断项。
+- 酒店快照用 `query.requested_occupancy` 保存成人数与房间数；`supplier_capacity_filter_supported=false` 时，即使返回价格也只能称为报价候选。
 - `readiness[].status` 使用 `verified`、`platform_reported`、`estimated`、`to_recheck` 或 `not_applicable`。
 
 ## 景点、预约与天气

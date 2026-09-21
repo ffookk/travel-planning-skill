@@ -1,6 +1,6 @@
 {
-  "schema_version": "travel-research-result/v1",
-  "template_version": 4,
+  "schema_version": "travel-research-result/v2",
+  "template_version": 5,
   "template_digest": "COPY_FROM_ASSIGNMENT",
   "task_id": "COPY_FROM_ASSIGNMENT",
   "status": "complete",
@@ -14,7 +14,7 @@
     "meal_baseline_routes": [],
     "meal_route_evaluations": []
   },
-  "catalog_candidates": [
+  "shared_entities": [
     {
       "entity_id": "route-anchor-stable-id",
       "entity_type": "route_anchor",
@@ -22,24 +22,12 @@
       "aliases": [],
       "tags": [],
       "location": {},
-      "reusable": {
+      "facts": {
         "coordinates": "",
         "entrance_or_exit_name": "",
         "access_modes": []
       },
-      "seasonal_profiles": [],
-      "verification_hints": [],
-      "source_refs": [
-        {
-          "source_id": "",
-          "title": "",
-          "url": "https://",
-          "kind": "map",
-          "authority": "map_provider",
-          "last_verified_at": "",
-          "status": "active"
-        }
-      ]
+      "source_ids": []
     }
   ],
   "event_bindings": [],

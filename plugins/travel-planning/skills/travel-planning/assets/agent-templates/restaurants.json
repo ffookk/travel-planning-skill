@@ -1,6 +1,6 @@
 {
-  "schema_version": "travel-research-result/v1",
-  "template_version": 3,
+  "schema_version": "travel-research-result/v2",
+  "template_version": 4,
   "template_digest": "COPY_FROM_ASSIGNMENT",
   "task_id": "COPY_FROM_ASSIGNMENT",
   "status": "complete",
@@ -12,7 +12,7 @@
     "meal_candidate_sets": [],
     "meal_options": []
   },
-  "catalog_candidates": [
+  "shared_entities": [
     {
       "entity_id": "restaurant-stable-id",
       "entity_type": "restaurant",
@@ -20,7 +20,7 @@
       "aliases": [],
       "tags": [],
       "location": {},
-      "reusable": {
+      "facts": {
         "physical_address": "",
         "coordinates": "",
         "amap_poi_id": "",
@@ -36,19 +36,7 @@
         "official_endpoints": {},
         "image_refs": []
       },
-      "seasonal_profiles": [],
-      "verification_hints": [],
-      "source_refs": [
-        {
-          "source_id": "",
-          "title": "",
-          "url": "https://",
-          "kind": "official_or_stable_platform",
-          "authority": "operator_or_platform",
-          "last_verified_at": "",
-          "status": "active"
-        }
-      ]
+      "source_ids": []
     }
   ],
   "event_bindings": [],

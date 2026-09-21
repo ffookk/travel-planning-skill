@@ -93,7 +93,13 @@ class ResearchWorkspaceTest(unittest.TestCase):
             "input_revision": assignment["input_revision"],
             "summary": "包车换乘少",
             "entities": {"transport_edges": [{"id": "transport-edge-1"}]},
-            "catalog_candidates": [],
+            "shared_entities": [{
+                "entity_id": "hub-hangzhou-east",
+                "entity_type": "transport_hub",
+                "canonical_name": "杭州东站",
+                "facts": {"city": "杭州"},
+                "source_ids": ["transport-source-1"],
+            }],
             "event_bindings": [],
             "constraints": [],
             "unresolved": [],
@@ -111,7 +117,6 @@ class ResearchWorkspaceTest(unittest.TestCase):
                     "topic": "公共交通",
                     "tags": ["hangzhou", "transport"],
                     "freshness": "stable",
-                    "reuse_scope": "candidate_for_future",
                 }
             ],
         )
@@ -127,10 +132,121 @@ class ResearchWorkspaceTest(unittest.TestCase):
         self.assertEqual(merged["result_count"], 1)
         self.assertEqual(merged["source_count"], 1)
         self.assertEqual(merged["archive_count"], 1)
+        self.assertEqual(merged["shared_entity_count"], 1)
+        self.assertEqual(merged["shared_entity_conflict_count"], 0)
         state = json.loads((self.workspace / "state" / "research.json").read_text(encoding="utf-8"))
+        self.assertEqual(state["schema_version"], "travel-research-state/v2")
         self.assertEqual(state["tasks"][0]["task_id"], "transport")
+        self.assertEqual(state["tasks"][0]["result_path"], "results/transport.json")
+        self.assertNotIn("entities", state["tasks"][0])
+        self.assertEqual(state["global_state"]["shared_entities"][0]["entity_id"], "hub-hangzhou-east")
+        self.assertEqual(state["global_state"]["shared_entities"][0]["origin_task_ids"], ["transport"])
+        self.assertEqual(state["global_state"]["conflicts"], [])
+        self.assertEqual(state["indexes"]["source_snapshots"], "state/source-snapshots.json")
+        self.assertNotIn("source_snapshots", state)
         archive = json.loads((self.workspace / "state" / "archive.json").read_text(encoding="utf-8"))
-        self.assertEqual(archive["records"][0]["reuse_scope"], "candidate_for_future")
+        self.assertEqual(archive["records"][0]["freshness"], "stable")
+
+    def test_merge_revalidates_persisted_result(self) -> None:
+        assignment = research_workspace.assign(
+            Namespace(
+                workspace=str(self.workspace), task_id="weather", domain="weather",
+                instructions="查天气", depends_on=None,
+            )
+        )["assignment"]
+        result_file = self.root / "weather-result.json"
+        write_json(result_file, {
+            "schema_version": assignment["result_schema_version"],
+            "template_version": assignment["template_version"],
+            "template_digest": assignment["template_digest"],
+            "status": "complete",
+            "input_revision": assignment["input_revision"],
+            "summary": "天气结果",
+            "entities": {"weather": []},
+            "shared_entities": [], "event_bindings": [], "constraints": [],
+            "unresolved": [], "source_ids": [],
+        })
+        research_workspace.submit(Namespace(
+            workspace=str(self.workspace), task_id="weather",
+            result_file=str(result_file), sources_file=None,
+        ))
+        persisted = self.workspace / "results" / "weather.json"
+        tampered = json.loads(persisted.read_text(encoding="utf-8"))
+        del tampered["unresolved"]
+        write_json(persisted, tampered)
+
+        with self.assertRaisesRegex(research_workspace.WorkspaceError, "result.unresolved"):
+            research_workspace.merge(Namespace(workspace=str(self.workspace), allow_partial=False))
+
+    def test_merge_includes_main_agent_sources(self) -> None:
+        source = {
+            "id": "main-route-notice",
+            "task_id": "main",
+            "title": "路线公告",
+            "url": "https://example.com/route-notice",
+            "kind": "official",
+            "checked_at": "2026-09-21T10:00:00+08:00",
+            "freshness": "dynamic",
+        }
+        (self.workspace / "sources" / "main.jsonl").write_text(
+            json.dumps(source, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+
+        merged = research_workspace.merge(Namespace(workspace=str(self.workspace), allow_partial=False))
+        self.assertEqual(merged["source_count"], 1)
+        state = json.loads((self.workspace / "state" / "sources.json").read_text(encoding="utf-8"))
+        self.assertEqual(state["sources"][0]["id"], "main-route-notice")
+
+    def test_merge_canonicalizes_duplicate_shared_entities(self) -> None:
+        for task_id, submitted_at, code, aliases in (
+            ("transport-a", "2026-09-21T10:00:00+08:00", "HZD", ["杭州东"]),
+            ("transport-b", "2026-09-21T11:00:00+08:00", "HGH-E", ["杭州东站"]),
+        ):
+            assignment = research_workspace.assign(
+                Namespace(
+                    workspace=str(self.workspace), task_id=task_id, domain="transport",
+                    instructions="核验交通枢纽", depends_on=None,
+                )
+            )["assignment"]
+            result_file = self.root / f"{task_id}-result.json"
+            write_json(result_file, {
+                "schema_version": assignment["result_schema_version"],
+                "template_version": assignment["template_version"],
+                "template_digest": assignment["template_digest"],
+                "status": "complete",
+                "input_revision": assignment["input_revision"],
+                "summary": "交通枢纽",
+                "entities": {"transport_edges": []},
+                "shared_entities": [{
+                    "entity_id": "hub-hangzhou-east",
+                    "entity_type": "transport_hub",
+                    "canonical_name": "杭州东站",
+                    "aliases": aliases,
+                    "facts": {"station_code": code, "city": "杭州"},
+                    "source_ids": [],
+                }],
+                "event_bindings": [], "constraints": [], "unresolved": [], "source_ids": [],
+            })
+            research_workspace.submit(Namespace(
+                workspace=str(self.workspace), task_id=task_id,
+                result_file=str(result_file), sources_file=None,
+            ))
+            persisted = self.workspace / "results" / f"{task_id}.json"
+            payload = json.loads(persisted.read_text(encoding="utf-8"))
+            payload["submitted_at"] = submitted_at
+            write_json(persisted, payload)
+
+        merged = research_workspace.merge(Namespace(workspace=str(self.workspace), allow_partial=False))
+        self.assertEqual(merged["shared_entity_count"], 1)
+        self.assertEqual(merged["shared_entity_conflict_count"], 1)
+        state = json.loads((self.workspace / "state" / "research.json").read_text(encoding="utf-8"))
+        entity = state["global_state"]["shared_entities"][0]
+        self.assertEqual(entity["facts"]["station_code"], "HGH-E")
+        self.assertEqual(entity["aliases"], ["杭州东", "杭州东站"])
+        self.assertEqual(entity["origin_task_ids"], ["transport-a", "transport-b"])
+        conflict = state["global_state"]["conflicts"][0]
+        self.assertEqual(conflict["field"], "facts.station_code")
+        self.assertEqual(conflict["resolution"], "latest_submission_wins")
 
     def test_assignment_declares_task_write_ownership(self) -> None:
         assigned = research_workspace.assign(
@@ -147,9 +263,9 @@ class ResearchWorkspaceTest(unittest.TestCase):
         self.assertIn("snapshots/weather/", assigned["owned_paths"])
         self.assertIn("artifacts/", assigned["forbidden_paths"])
         self.assertIn("assignments/weather.json", assigned["input_paths"])
-        self.assertIn("state/library-seed.json", assigned["input_paths"])
+        self.assertEqual(assigned["read_first"], ["manifest.json", "brief.json", "selected-route.json"])
         self.assertTrue(assigned["result_template"].endswith("weather.result-template.json"))
-        self.assertIn("catalog_candidates", assigned["catalog_policy"])
+        self.assertIn("shared_entities", assigned["shared_state_policy"])
         self.assertEqual(len(assigned["input_revision"]), 64)
 
     def test_provider_snapshot_is_stored_bound_submitted_and_merged(self) -> None:
@@ -178,7 +294,7 @@ class ResearchWorkspaceTest(unittest.TestCase):
                     "inventory_refs": [{"snapshot_id": snapshot["snapshot_id"], "offer_id": "g1234-second", "role": "candidate_quote"}],
                 }],
             },
-            "catalog_candidates": [], "event_bindings": [], "constraints": [], "unresolved": [], "source_ids": [],
+            "shared_entities": [], "event_bindings": [], "constraints": [], "unresolved": [], "source_ids": [],
         })
         submitted = research_workspace.submit(Namespace(
             workspace=str(self.workspace), task_id="live-route", result_file=str(result_file), sources_file=None,
@@ -197,7 +313,7 @@ class ResearchWorkspaceTest(unittest.TestCase):
         with self.assertRaisesRegex(research_workspace.WorkspaceError, "必须投影为候选并绑定"):
             research_workspace.validate_inventory_bindings(result, [inventory_snapshot()])
 
-    def test_restaurant_assignment_uses_v3_template_and_owned_entities(self) -> None:
+    def test_restaurant_assignment_uses_v4_template_and_owned_entities(self) -> None:
         assigned = research_workspace.assign(
             Namespace(
                 workspace=str(self.workspace),
@@ -207,19 +323,19 @@ class ResearchWorkspaceTest(unittest.TestCase):
                 depends_on=None,
             )
         )["assignment"]
-        self.assertEqual(assigned["template_version"], 3)
+        self.assertEqual(assigned["template_version"], 4)
         template = json.loads((self.workspace / assigned["result_template"]).read_text(encoding="utf-8"))
         self.assertEqual(set(template["entities"]), {"restaurants", "restaurant_snapshots", "meal_candidate_sets", "meal_options"})
 
-    def test_stay_food_cannot_submit_restaurant_catalog_entity(self) -> None:
+    def test_stay_food_cannot_submit_restaurant_shared_entity(self) -> None:
         result = {
             "domain": "stay-food",
             "entities": {"lodging_options": [], "meal_options": []},
-            "catalog_candidates": [{
+            "shared_entities": [{
                 "entity_id": "restaurant-demo",
                 "entity_type": "restaurant",
                 "canonical_name": "示例餐厅",
-                "reusable": {
+                "facts": {
                     "physical_address": "示例地址",
                     "coordinates": "120.1,30.2",
                     "amap_poi_id": "demo-poi",
@@ -234,22 +350,14 @@ class ResearchWorkspaceTest(unittest.TestCase):
                         "checked_at": "2026-09-21",
                     }],
                 },
-                "source_refs": [{
-                    "source_id": "stay-food-restaurant-demo",
-                    "title": "示例详情",
-                    "url": "https://example.com/restaurant",
-                    "kind": "map",
-                    "authority": "map_provider",
-                    "last_verified_at": "2026-09-21",
-                    "status": "active",
-                }],
+                "source_ids": ["stay-food-restaurant-demo"],
             }],
             "event_bindings": [],
             "constraints": [],
             "unresolved": [],
             "source_ids": [],
         }
-        with self.assertRaisesRegex(research_workspace.WorkspaceError, "不能提交公共实体类型"):
+        with self.assertRaisesRegex(research_workspace.WorkspaceError, "不能提交共享实体类型"):
             research_workspace.validate_result_contract(result)
 
     def test_task_source_requires_task_prefix(self) -> None:
@@ -290,7 +398,7 @@ class ResearchWorkspaceTest(unittest.TestCase):
             "status": "complete",
             "input_revision": assignment["input_revision"],
             "entities": {},
-            "catalog_candidates": [],
+            "shared_entities": [],
             "event_bindings": [],
             "constraints": [],
             "unresolved": [],
@@ -339,7 +447,7 @@ class ResearchWorkspaceTest(unittest.TestCase):
     def test_event_binding_uses_typed_target_and_operation(self) -> None:
         valid = {
             "entities": {},
-            "catalog_candidates": [],
+            "shared_entities": [],
             "event_bindings": [{
                 "id": "weather-bind-cp-1",
                 "day_id": "d1",
@@ -362,7 +470,7 @@ class ResearchWorkspaceTest(unittest.TestCase):
         result = {
             "domain": "weather-risk",
             "entities": {"attractions": []},
-            "catalog_candidates": [],
+            "shared_entities": [],
             "event_bindings": [],
             "constraints": [],
             "unresolved": [],
@@ -371,27 +479,24 @@ class ResearchWorkspaceTest(unittest.TestCase):
         with self.assertRaisesRegex(research_workspace.WorkspaceError, "不能提交 entities 字段"):
             research_workspace.validate_result_contract(result)
 
-    def test_weather_domain_rejects_public_catalog_candidate(self) -> None:
+    def test_weather_domain_rejects_shared_entity(self) -> None:
         candidate = {
             "entity_id": "attraction-west-lake",
             "entity_type": "attraction",
             "canonical_name": "西湖",
-            "reusable": {"official_endpoints": {}, "entrances": [], "checkpoint_blueprint": [], "typical_visit_duration": "2小时"},
-            "source_refs": [{
-                "source_id": "weather-source-1", "title": "官方", "url": "https://example.com",
-                "kind": "official", "authority": "operator", "last_verified_at": "2026-09-20", "status": "active"
-            }],
+            "facts": {"official_endpoints": {}, "entrances": [], "checkpoint_blueprint": [], "typical_visit_duration": "2小时"},
+            "source_ids": ["weather-source-1"],
         }
         result = {
             "domain": "weather-risk",
             "entities": {"weather": []},
-            "catalog_candidates": [candidate],
+            "shared_entities": [candidate],
             "event_bindings": [],
             "constraints": [],
             "unresolved": [],
             "source_ids": ["weather-source-1"],
         }
-        with self.assertRaisesRegex(research_workspace.WorkspaceError, "不能提交公共实体类型"):
+        with self.assertRaisesRegex(research_workspace.WorkspaceError, "不能提交共享实体类型"):
             research_workspace.validate_result_contract(result)
 
     def test_assignment_dependency_must_exist(self) -> None:
@@ -470,7 +575,7 @@ class ResearchWorkspaceTest(unittest.TestCase):
             "status": "complete",
             "input_revision": assignment["input_revision"],
             "entities": {},
-            "catalog_candidates": [],
+            "shared_entities": [],
             "event_bindings": [],
             "constraints": [],
             "unresolved": [],
@@ -505,7 +610,7 @@ class ResearchWorkspaceTest(unittest.TestCase):
             "status": "complete",
             "input_revision": assignment["input_revision"],
             "entities": {"restaurants": [], "restaurant_snapshots": [], "meal_candidate_sets": [], "meal_options": []},
-            "catalog_candidates": [],
+            "shared_entities": [],
             "event_bindings": [],
             "constraints": [],
             "unresolved": [],
@@ -556,7 +661,7 @@ class ResearchWorkspaceTest(unittest.TestCase):
         with self.assertRaisesRegex(research_workspace.WorkspaceError, "完整覆盖 discovery 候选"):
             research_workspace.validate_stage_result(self.workspace, assignment, result)
 
-    def test_assignment_is_invalidated_when_library_seed_changes(self) -> None:
+    def test_assignment_is_invalidated_when_brief_changes(self) -> None:
         assignment = research_workspace.assign(
             Namespace(
                 workspace=str(self.workspace),
@@ -566,10 +671,10 @@ class ResearchWorkspaceTest(unittest.TestCase):
                 depends_on=None,
             )
         )["assignment"]
-        seed = self.workspace / "state" / "library-seed.json"
-        payload = json.loads(seed.read_text(encoding="utf-8"))
-        payload["entities"].append({"entity_id": "new-base"})
-        write_json(seed, payload)
+        brief = self.workspace / "brief.json"
+        payload = json.loads(brief.read_text(encoding="utf-8"))
+        payload["preferences"].append("新增偏好")
+        write_json(brief, payload)
         result_file = self.root / "stale-result.json"
         write_json(result_file, {
             "schema_version": assignment["result_schema_version"],
@@ -578,7 +683,7 @@ class ResearchWorkspaceTest(unittest.TestCase):
             "status": "complete",
             "input_revision": assignment["input_revision"],
             "entities": {},
-            "catalog_candidates": [],
+            "shared_entities": [],
             "event_bindings": [],
             "constraints": [],
             "unresolved": [],
@@ -587,7 +692,7 @@ class ResearchWorkspaceTest(unittest.TestCase):
         with self.assertRaisesRegex(research_workspace.WorkspaceError, "输入文件已变化"):
             research_workspace.submit(Namespace(workspace=str(self.workspace), task_id="attractions", result_file=str(result_file), sources_file=None))
 
-    def test_archive_document_and_search_across_trips(self) -> None:
+    def test_archive_document_inside_workspace(self) -> None:
         document = self.root / "official-notice.pdf"
         document.write_bytes(b"%PDF-1.4\narchive test\n")
         archived = research_workspace.archive(
@@ -608,58 +713,11 @@ class ResearchWorkspaceTest(unittest.TestCase):
                 checked_at="2026-09-20T10:00:00+08:00",
                 valid_until=None,
                 freshness="seasonal",
-                reuse_scope="candidate_for_future",
             )
         )
         stored = self.workspace / archived["record"]["stored_path"]
         self.assertTrue(stored.is_file())
         self.assertEqual(archived["record"]["sha256"], research_workspace.hashlib.sha256(document.read_bytes()).hexdigest())
-
-        found = research_workspace.search_archive(
-            Namespace(
-                root=str(self.root),
-                query="西湖 公告",
-                location=None,
-                topic=None,
-                tag=None,
-                include_trip_only=False,
-                limit=20,
-            )
-        )
-        self.assertEqual(found["match_count"], 1)
-        self.assertEqual(found["matches"][0]["record"]["id"], "west-lake-notice")
-        self.assertIn("必须复核", found["matches"][0]["reuse_guidance"])
-
-    def test_archive_search_excludes_trip_only_by_default(self) -> None:
-        research_workspace.archive(
-            Namespace(
-                workspace=str(self.workspace),
-                record_id="today-price",
-                task_id="main",
-                kind="link",
-                title="查询时价格",
-                url="https://example.com/price",
-                file=None,
-                source_kind="booking_platform",
-                summary="仅供本次比价",
-                query="杭州酒店价格",
-                location="杭州",
-                topic="酒店价格",
-                tag=["hotel"],
-                checked_at=None,
-                valid_until=None,
-                freshness="dynamic",
-                reuse_scope="trip_only",
-            )
-        )
-        hidden = research_workspace.search_archive(
-            Namespace(root=str(self.root), query="价格", location=None, topic=None, tag=None, include_trip_only=False, limit=20)
-        )
-        visible = research_workspace.search_archive(
-            Namespace(root=str(self.root), query="价格", location=None, topic=None, tag=None, include_trip_only=True, limit=20)
-        )
-        self.assertEqual(hidden["match_count"], 0)
-        self.assertEqual(visible["match_count"], 1)
 
     def test_source_ids_cannot_escape_archive_directory(self) -> None:
         with self.assertRaises(research_workspace.WorkspaceError):

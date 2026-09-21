@@ -40,7 +40,7 @@ def add_inventory_binding(data: dict, expires_at: str = "2099-01-01T10:30:00+08:
 
 class RenderItineraryTest(unittest.TestCase):
     def load_example(self) -> dict:
-        return json.loads((SKILL_ROOT / "references" / "example-itinerary.json").read_text(encoding="utf-8"))
+        return json.loads((SKILL_ROOT / "assets" / "example-itinerary.json").read_text(encoding="utf-8"))
 
     def test_readiness_is_rendered(self) -> None:
         html = render_itinerary.build(self.load_example())

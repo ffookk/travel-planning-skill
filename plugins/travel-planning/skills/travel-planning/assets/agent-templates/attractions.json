@@ -1,6 +1,6 @@
 {
-  "schema_version": "travel-research-result/v1",
-  "template_version": 1,
+  "schema_version": "travel-research-result/v2",
+  "template_version": 2,
   "template_digest": "COPY_FROM_ASSIGNMENT",
   "task_id": "COPY_FROM_ASSIGNMENT",
   "status": "complete",
@@ -36,7 +36,7 @@
       }
     ]
   },
-  "catalog_candidates": [
+  "shared_entities": [
     {
       "entity_id": "attraction-stable-id",
       "entity_type": "attraction",
@@ -44,25 +44,13 @@
       "aliases": [],
       "tags": [],
       "location": {},
-      "reusable": {
+      "facts": {
         "official_endpoints": {},
         "entrances": [],
         "checkpoint_blueprint": [],
         "typical_visit_duration": ""
       },
-      "seasonal_profiles": [],
-      "verification_hints": [],
-      "source_refs": [
-        {
-          "source_id": "",
-          "title": "",
-          "url": "https://",
-          "kind": "official",
-          "authority": "attraction_operator",
-          "last_verified_at": "",
-          "status": "active"
-        }
-      ]
+      "source_ids": []
     }
   ],
   "event_bindings": [],

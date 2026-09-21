@@ -20,14 +20,14 @@ description: 调研和规划需要可靠动态信息的旅行，比较路线与�
 
 | 场景 | 必读资料 |
 | --- | --- |
-| 复用历史稳定资料 | [跨行程公共资料库](references/shared-travel-library.md) |
 | 研究景点、出入口、内部顺序和交通边 | [景点与路线研究](references/research-workflow.md) |
 | 选择来源、处理冲突或自动查询失败 | [信息获取与核验策略](references/source-strategy.md) |
-| 查询航班、铁路、住宿、地图、天气或小红书 | [实时数据工具](references/live-data-tools.md)；涉及小红书时再读[小红书集成](references/xiaohongshu-integration.md) |
+| 查询航班、铁路、住宿、地图、天气或小红书 | [实时数据工具](references/live-data-tools.md)；小红书工具操作遵循 `$xiaohongshu` |
 | 研究正餐候选和双向绕行 | [餐厅候选研究与路线适配](references/restaurant-research.md) |
-| 创建研究目录或使用子 Agent | [行程研究工作区](references/research-workspace.md)和[子 Agent 编排](references/agent-orchestration.md) |
+| 判断是否拆分、分配任务和检查完成门槛 | [子 Agent 编排](references/agent-orchestration.md) |
+| 创建 workspace、归档来源或提交任务结果 | [行程研究工作区](references/research-workspace.md) |
 | 检查境外、行李、特殊人群和分阶段复核 | [行前就绪检查](references/trip-readiness.md) |
-| 创建或修改 `itinerary.json` | [行程数据结构](references/itinerary-schema.md)和[渲染示例](references/example-itinerary.json) |
+| 创建或修改 `itinerary.json` | [行程数据结构](references/itinerary-schema.md) |
 | 渲染或检查页面 | [交互页面规范](references/interactive-page.md) |
 
 深度规划开始前运行真实数据源预检，并按路线追加必需来源：
@@ -59,7 +59,7 @@ python3 skills/travel-planning/scripts/research_sources.py preflight \
 
 协作能力可用且存在两个以上独立研究域时，深度规划必须并行。多城市、超过 3 天、候选景点超过 8 个，或同时涉及铁路/航班/大巴/包车时，按子 Agent 编排执行；路线建议阶段、用户禁止委派、协作槽位不可用或任务存在硬依赖时除外。子 Agent 只提交 assignment 允许的研究结果、来源、快照和证据；主 Agent 负责路线、合并、冲突裁决、最终 JSON 和页面。
 
-公共资料库只提供稳定基线。日期、价格、开放、库存、天气和临时公告必须按本次行程重新查询；子 Agent 只能提出公共库候选，由主 Agent 在最终审查后逐个晋升。
+跨 Agent 复用的数据统一写入本次 `.travel-research/<trip-id>/state/research.json`；不建立跨行程缓存。各任务只写自己的结果、来源和快照，`merge` 重新校验后按实体 ID 汇总 `shared_entities[]`，自动合并互补字段、记录冲突，并汇总事件绑定、约束和未解决项。
 
 ## 合并与审查
 

@@ -34,7 +34,7 @@ def add_expired_inventory(data: dict) -> str:
 
 class AuditItineraryTest(unittest.TestCase):
     def load_example(self) -> dict:
-        return json.loads((SKILL_ROOT / "references" / "example-itinerary.json").read_text(encoding="utf-8"))
+        return json.loads((SKILL_ROOT / "assets" / "example-itinerary.json").read_text(encoding="utf-8"))
 
     def test_example_passes(self) -> None:
         result = audit_itinerary.audit(self.load_example())

@@ -5,13 +5,13 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib.util
 import json
 import os
 import re
 import shutil
 import sys
 import tempfile
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -20,7 +20,6 @@ from typing import Any
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 WORKSPACE_VERSION = 1
 ARCHIVE_KINDS = {"link", "document", "note"}
-REUSE_SCOPES = {"trip_only", "candidate_for_future"}
 FRESHNESS_CLASSES = {"stable", "seasonal", "dynamic"}
 RESEARCH_STAGES = {"restaurant_discovery", "meal_route_evaluation", "restaurant_ranking"}
 DEFAULT_TASK_STAGES = {
@@ -66,7 +65,7 @@ DOMAIN_ENTITY_KEYS = {
     "weather-risk": {"weather", "event_impacts", "route_impacts"},
     "weather": {"weather", "event_impacts", "route_impacts"},
 }
-DOMAIN_CATALOG_TYPES = {
+DOMAIN_SHARED_ENTITY_TYPES = {
     "attractions": {"attraction", "place"},
     "attraction": {"attraction", "place"},
     "route-data": {"route_anchor", "transport_hub", "place"},
@@ -79,10 +78,12 @@ DOMAIN_CATALOG_TYPES = {
     "weather-risk": set(),
     "weather": set(),
 }
-LIBRARY_SPEC = importlib.util.spec_from_file_location("travel_library", Path(__file__).with_name("travel_library.py"))
-assert LIBRARY_SPEC and LIBRARY_SPEC.loader
-travel_library = importlib.util.module_from_spec(LIBRARY_SPEC)
-LIBRARY_SPEC.loader.exec_module(travel_library)
+SHARED_ENTITY_TYPES = {
+    "attraction", "place", "transport_hub", "lodging", "restaurant", "route_anchor"
+}
+RESERVED_SHARED_ENTITY_FIELDS = {
+    "task_id", "origin_task_ids", "last_submitted_at"
+}
 
 
 class WorkspaceError(RuntimeError):
@@ -190,10 +191,6 @@ def init_workspace(args: argparse.Namespace) -> dict[str, Any]:
         raise WorkspaceError(f"工作区已存在且非空，不会覆盖：{workspace}")
     for name in ("assignments", "results", "sources", "snapshots", "state", "artifacts", "evidence/main/files"):
         (workspace / name).mkdir(parents=True, exist_ok=True)
-    shared_library_root = Path(
-        getattr(args, "library_root", None) or root.parent / ".travel-library"
-    ).expanduser().resolve()
-
     brief: dict[str, Any] = {
         "destination": args.destination,
         "date_range": args.date_range,
@@ -220,20 +217,11 @@ def init_workspace(args: argparse.Namespace) -> dict[str, Any]:
             "task_agent": ["results/<task_id>.json", "sources/<task_id>.jsonl", "snapshots/<task_id>/", "evidence/<task_id>/"],
         },
         "sensitive_data_policy": "不写入 API Key、Cookie、账号密码、身份证件或支付信息",
-        "shared_library": {
-            "root": str(shared_library_root),
-            "policy": "只复用稳定或季节性实体；动态事实必须在本次行程重新查询",
-        },
+        "shared_state_policy": "跨 Agent 复用的数据只写入本行程 workspace；不建立跨行程缓存",
     }
     write_json(workspace / "manifest.json", manifest)
     write_json(workspace / "brief.json", brief)
     write_json(workspace / "route-proposals.json", [])
-    write_json(workspace / "state" / "library-seed.json", {
-        "library_version": 1,
-        "library_root": str(shared_library_root),
-        "materialized_at": now(),
-        "entities": [],
-    })
     return {"status": "created", "workspace": str(workspace), "trip_id": trip_id}
 
 
@@ -299,7 +287,7 @@ def assign(args: argparse.Namespace) -> dict[str, Any]:
         raise WorkspaceError("meal_route_evaluation 必须依赖 restaurant_discovery")
     if stage == "restaurant_ranking" and not {"restaurant_discovery", "meal_route_evaluation"}.issubset(dependency_stages):
         raise WorkspaceError("restaurant_ranking 必须同时依赖 restaurant_discovery 和 meal_route_evaluation")
-    read_first = ["manifest.json", "brief.json", "state/library-seed.json"]
+    read_first = ["manifest.json", "brief.json"]
     if args.domain != "route_proposal":
         read_first.append("selected-route.json")
     dependency_paths = [f"results/{dependency}.json" for dependency in dependencies]
@@ -346,11 +334,11 @@ def assign(args: argparse.Namespace) -> dict[str, Any]:
             "references/",
         ],
         "source_id_prefix": f"{task_id}-",
-        "result_schema_version": "travel-research-result/v1",
+        "result_schema_version": "travel-research-result/v2",
         "result_template": template_relative,
         "template_version": template_version,
         "template_digest": template_digest,
-        "catalog_policy": "公共库种子只读；可在 catalog_candidates 提交稳定/季节性候选，动态事实只写 entities",
+        "shared_state_policy": "把其他 Agent、排程、审查或页面会消费的规范化实体写入 shared_entities；merge 后自动进入本行程全局状态",
         "submit_command": f"python3 skills/travel-planning/scripts/research_workspace.py submit --workspace {workspace} --task-id {task_id} --result-file <result.json> --sources-file <sources.json>",
         "created_at": now(),
     }
@@ -365,7 +353,7 @@ def validate_result_contract(result: dict[str, Any]) -> None:
         raise WorkspaceError("result.summary 最长 200 字，只写关键结论和阻塞项")
     required_types = {
         "entities": dict,
-        "catalog_candidates": list,
+        "shared_entities": list,
         "event_bindings": list,
         "constraints": list,
         "unresolved": list,
@@ -382,27 +370,43 @@ def validate_result_contract(result: dict[str, Any]) -> None:
     for snapshot_id in snapshot_ids:
         if not SNAPSHOT_ID_PATTERN.fullmatch(str(snapshot_id)):
             raise WorkspaceError(f"source_snapshot_id 无效：{snapshot_id}")
-    for index, candidate in enumerate(result["catalog_candidates"]):
-        if not isinstance(candidate, dict):
-            raise WorkspaceError(f"result.catalog_candidates[{index}] 必须是对象")
-        required_candidate = {"entity_id", "entity_type", "canonical_name", "reusable", "source_refs"}
-        missing_candidate = sorted(field for field in required_candidate if field not in candidate or candidate.get(field) in (None, ""))
-        if missing_candidate:
-            raise WorkspaceError(f"result.catalog_candidates[{index}] 缺少字段：{', '.join(missing_candidate)}")
-        if not isinstance(candidate.get("reusable"), dict) or not isinstance(candidate.get("source_refs"), list):
-            raise WorkspaceError(f"result.catalog_candidates[{index}] 的 reusable 必须是对象且 source_refs 必须是数组")
-        try:
-            travel_library.validate_candidate(candidate)
-        except travel_library.LibraryError as error:
-            raise WorkspaceError(f"result.catalog_candidates[{index}] 无效：{error}") from error
+    for index, entity in enumerate(result["shared_entities"]):
+        if not isinstance(entity, dict):
+            raise WorkspaceError(f"result.shared_entities[{index}] 必须是对象")
+        reserved = sorted(RESERVED_SHARED_ENTITY_FIELDS.intersection(entity))
+        if reserved:
+            raise WorkspaceError(
+                f"result.shared_entities[{index}] 不能写入合并器保留字段：{', '.join(reserved)}"
+            )
+        required_entity = {"entity_id", "entity_type", "canonical_name", "facts", "source_ids"}
+        missing_entity = sorted(
+            field for field in required_entity
+            if field not in entity or entity.get(field) in (None, "")
+        )
+        if missing_entity:
+            raise WorkspaceError(
+                f"result.shared_entities[{index}] 缺少字段：{', '.join(missing_entity)}"
+            )
+        valid_id(str(entity["entity_id"]), f"result.shared_entities[{index}].entity_id")
+        if entity["entity_type"] not in SHARED_ENTITY_TYPES:
+            raise WorkspaceError(
+                f"result.shared_entities[{index}].entity_type 无效：{entity['entity_type']}"
+            )
+        if not isinstance(entity["facts"], dict) or not isinstance(entity["source_ids"], list):
+            raise WorkspaceError(
+                f"result.shared_entities[{index}] 的 facts 必须是对象且 source_ids 必须是数组"
+            )
     domain = result.get("domain")
     if domain in DOMAIN_ENTITY_KEYS:
         unexpected = sorted(set(result["entities"]) - DOMAIN_ENTITY_KEYS[domain])
         if unexpected:
             raise WorkspaceError(f"{domain} 任务不能提交 entities 字段：{', '.join(unexpected)}")
-        unexpected_types = sorted({str(item.get("entity_type")) for item in result["catalog_candidates"]} - DOMAIN_CATALOG_TYPES[domain])
+        unexpected_types = sorted(
+            {str(item.get("entity_type")) for item in result["shared_entities"]}
+            - DOMAIN_SHARED_ENTITY_TYPES[domain]
+        )
         if unexpected_types:
-            raise WorkspaceError(f"{domain} 任务不能提交公共实体类型：{', '.join(unexpected_types)}")
+            raise WorkspaceError(f"{domain} 任务不能提交共享实体类型：{', '.join(unexpected_types)}")
     for index, binding in enumerate(result["event_bindings"]):
         if not isinstance(binding, dict):
             raise WorkspaceError(f"result.event_bindings[{index}] 必须是对象")
@@ -726,10 +730,7 @@ def normalize_sources(payload: Any, task_id: str) -> list[dict[str, Any]]:
         item["id"] = source_id
         item["task_id"] = task_id
         item["checked_at"] = item.get("checked_at") or now()
-        item["reuse_scope"] = item.get("reuse_scope") or "trip_only"
         item["freshness"] = item.get("freshness") or "dynamic"
-        if item["reuse_scope"] not in REUSE_SCOPES:
-            raise WorkspaceError(f"来源 {source_id} 的 reuse_scope 无效")
         if item["freshness"] not in FRESHNESS_CLASSES:
             raise WorkspaceError(f"来源 {source_id} 的 freshness 无效")
         sources.append(item)
@@ -780,7 +781,6 @@ def source_evidence_record(source: dict[str, Any]) -> dict[str, Any]:
         "checked_at": source["checked_at"],
         "valid_until": source.get("valid_until"),
         "freshness": source["freshness"],
-        "reuse_scope": source["reuse_scope"],
         "archived_at": now(),
     }
 
@@ -792,8 +792,6 @@ def archive(args: argparse.Namespace) -> dict[str, Any]:
         raise WorkspaceError(f"档案记录已存在，不会覆盖：{args.record_id}")
     if args.kind not in ARCHIVE_KINDS:
         raise WorkspaceError(f"kind 只能是：{', '.join(sorted(ARCHIVE_KINDS))}")
-    if args.reuse_scope not in REUSE_SCOPES:
-        raise WorkspaceError(f"reuse_scope 只能是：{', '.join(sorted(REUSE_SCOPES))}")
     if args.freshness not in FRESHNESS_CLASSES:
         raise WorkspaceError(f"freshness 只能是：{', '.join(sorted(FRESHNESS_CLASSES))}")
     if args.url and not args.url.startswith("https://"):
@@ -821,7 +819,6 @@ def archive(args: argparse.Namespace) -> dict[str, Any]:
         "checked_at": args.checked_at or now(),
         "valid_until": args.valid_until,
         "freshness": args.freshness,
-        "reuse_scope": args.reuse_scope,
         "archived_at": now(),
     }
     if args.kind == "document":
@@ -863,52 +860,6 @@ def collect_archive_records(workspace: Path) -> list[dict[str, Any]]:
         item["record_path"] = str(path.relative_to(workspace))
         records.append(item)
     return records
-
-
-def reuse_guidance(record: dict[str, Any]) -> str:
-    if record.get("freshness") == "dynamic":
-        return "仅作线索；价格、库存、时刻、天气和临时公告必须重新查询"
-    if record.get("freshness") == "seasonal":
-        return "可作同季节候选；必须复核年份、具体日期和最新公告"
-    return "可作背景或来源入口；关键事实仍需重新核验"
-
-
-def search_archive(args: argparse.Namespace) -> dict[str, Any]:
-    root = Path(args.root).expanduser().resolve()
-    if not root.is_dir():
-        raise WorkspaceError(f"研究工作区根目录不存在：{root}")
-    terms = [term.casefold() for term in (args.query or "").split() if term]
-    matches = []
-    for manifest_path in sorted(root.glob("*/manifest.json")):
-        workspace = manifest_path.parent
-        manifest = read_json(manifest_path)
-        if manifest.get("workspace_version") != WORKSPACE_VERSION:
-            continue
-        brief = read_json(workspace / "brief.json")
-        for record in collect_archive_records(workspace):
-            if not args.include_trip_only and record.get("reuse_scope") != "candidate_for_future":
-                continue
-            if args.tag and args.tag not in (record.get("tags") or []):
-                continue
-            if args.location and args.location.casefold() not in str(record.get("location") or "").casefold():
-                continue
-            if args.topic and args.topic.casefold() not in str(record.get("topic") or "").casefold():
-                continue
-            haystack = " ".join(str(record.get(key) or "") for key in ("title", "summary", "query", "location", "topic", "tags")).casefold()
-            if terms and not all(term in haystack for term in terms):
-                continue
-            matches.append(
-                {
-                    "trip_id": manifest.get("trip_id"),
-                    "destination": brief.get("destination"),
-                    "date_range": brief.get("date_range"),
-                    "workspace": str(workspace),
-                    "record": record,
-                    "reuse_guidance": reuse_guidance(record),
-                }
-            )
-    matches.sort(key=lambda item: str(item["record"].get("checked_at") or ""), reverse=True)
-    return {"status": "ok", "root": str(root), "match_count": len(matches[: args.limit]), "matches": matches[: args.limit]}
 
 
 def submit(args: argparse.Namespace) -> dict[str, Any]:
@@ -954,12 +905,6 @@ def submit(args: argparse.Namespace) -> dict[str, Any]:
     validate_restaurant_poi_sources(assignment, result, sources)
     available_source_ids = {source["id"] for source in sources}
     referenced_source_ids = nested_source_ids(result)
-    referenced_source_ids.update(
-        str(source_ref.get("source_id"))
-        for candidate in result.get("catalog_candidates") or []
-        for source_ref in candidate.get("source_refs") or []
-        if source_ref.get("source_id")
-    )
     missing_source_ids = sorted(referenced_source_ids - available_source_ids)
     if missing_source_ids:
         raise WorkspaceError(f"结果引用了未随任务提交的来源：{', '.join(missing_source_ids)}")
@@ -1032,59 +977,254 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def validate_submitted_result(
+    workspace: Path,
+    assignment: dict[str, Any],
+    result: dict[str, Any],
+    sources: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Revalidate persisted task output before it enters derived state."""
+    task_id = str(assignment.get("task_id") or "")
+    expected_identity = {
+        "task_id": task_id,
+        "domain": assignment.get("domain"),
+        "stage": assignment.get("stage"),
+        "input_revision": assignment.get("input_revision"),
+        "schema_version": assignment.get("result_schema_version"),
+        "template_version": assignment.get("template_version"),
+        "template_digest": assignment.get("template_digest"),
+    }
+    mismatched = sorted(
+        field for field, expected in expected_identity.items()
+        if result.get(field) != expected
+    )
+    if mismatched:
+        raise WorkspaceError(
+            f"任务 {task_id} 的已提交结果身份不一致：{', '.join(mismatched)}"
+        )
+    if not result.get("submitted_at"):
+        raise WorkspaceError(f"任务 {task_id} 的结果缺少 submitted_at，必须通过 submit 写入")
+    if revision_digest(workspace, assignment.get("revision_inputs") or []) != assignment.get("input_revision"):
+        raise WorkspaceError(f"任务 {task_id} 的 assignment 输入文件已变化；必须重新分配并提交")
+    if result.get("status") not in {"complete", "partial", "blocked"}:
+        raise WorkspaceError(f"任务 {task_id} 的 result.status 无效")
+
+    validate_result_contract(result)
+    normalized_sources = normalize_sources(sources, task_id)
+    if any(source.get("task_id") != task_id for source in sources):
+        raise WorkspaceError(f"任务 {task_id} 的来源文件包含错误 task_id")
+    snapshots = load_task_source_snapshots(
+        workspace, task_id, result.get("source_snapshot_ids") or []
+    )
+    validate_inventory_bindings(result, snapshots)
+    validate_stage_result(workspace, assignment, result)
+    validate_restaurant_poi_sources(assignment, result, normalized_sources)
+    available_source_ids = {source["id"] for source in normalized_sources}
+    missing_source_ids = sorted(nested_source_ids(result) - available_source_ids)
+    if missing_source_ids:
+        raise WorkspaceError(
+            f"任务 {task_id} 的结果引用了未提交来源：{', '.join(missing_source_ids)}"
+        )
+    return snapshots
+
+
+def merge_shared_entities(
+    results: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Build one canonical per-trip entity state with deterministic conflict handling."""
+    registry: dict[str, dict[str, Any]] = {}
+    conflicts: list[dict[str, Any]] = []
+
+    def merge_value(
+        entity_id: str,
+        field: str,
+        previous: Any,
+        incoming: Any,
+        previous_tasks: list[str],
+        incoming_task: str,
+    ) -> Any:
+        if previous == incoming:
+            return previous
+        if isinstance(previous, dict) and isinstance(incoming, dict):
+            merged = deepcopy(previous)
+            for key, value in incoming.items():
+                child = f"{field}.{key}" if field else key
+                if key not in merged:
+                    merged[key] = deepcopy(value)
+                else:
+                    merged[key] = merge_value(
+                        entity_id, child, merged[key], value, previous_tasks, incoming_task
+                    )
+            return merged
+        conflicts.append({
+            "entity_id": entity_id,
+            "field": field,
+            "previous_value": deepcopy(previous),
+            "incoming_value": deepcopy(incoming),
+            "selected_value": deepcopy(incoming),
+            "previous_task_ids": list(previous_tasks),
+            "incoming_task_id": incoming_task,
+            "resolution": "latest_submission_wins",
+        })
+        return deepcopy(incoming)
+
+    ordered_results = sorted(
+        results,
+        key=lambda item: (str(item.get("submitted_at") or ""), str(item.get("task_id") or "")),
+    )
+    for result in ordered_results:
+        task_id = str(result["task_id"])
+        submitted_at = str(result["submitted_at"])
+        for incoming in result.get("shared_entities") or []:
+            entity_id = str(incoming["entity_id"])
+            existing = registry.get(entity_id)
+            if existing is None:
+                canonical = deepcopy(incoming)
+                canonical["source_ids"] = list(dict.fromkeys(canonical.get("source_ids") or []))
+                canonical["origin_task_ids"] = [task_id]
+                canonical["last_submitted_at"] = submitted_at
+                registry[entity_id] = canonical
+                continue
+
+            previous_tasks = list(existing.get("origin_task_ids") or [])
+            for field, value in incoming.items():
+                if field == "entity_id":
+                    continue
+                if field in {"source_ids", "aliases", "tags"}:
+                    existing[field] = list(dict.fromkeys([
+                        *(existing.get(field) or []), *(value or [])
+                    ]))
+                elif field not in existing:
+                    existing[field] = deepcopy(value)
+                else:
+                    existing[field] = merge_value(
+                        entity_id, field, existing[field], value, previous_tasks, task_id
+                    )
+            if task_id not in previous_tasks:
+                previous_tasks.append(task_id)
+            existing["origin_task_ids"] = previous_tasks
+            existing["last_submitted_at"] = submitted_at
+
+    return list(registry.values()), conflicts
+
+
 def merge(args: argparse.Namespace) -> dict[str, Any]:
     workspace = workspace_path(args.workspace)
     snapshot = collect_status(workspace)
     if snapshot["pending_count"] and not args.allow_partial:
         raise WorkspaceError(f'仍有 {snapshot["pending_count"]} 个任务未提交；如确需部分合并使用 --allow-partial')
 
-    results = []
-    for path in sorted((workspace / "results").glob("*.json")):
-        results.append(read_json(path))
+    assignment_paths = sorted((workspace / "assignments").glob("*.json"))
+    assignment_ids = {path.stem for path in assignment_paths}
+    result_paths = sorted((workspace / "results").glob("*.json"))
+    orphan_result_ids = sorted(path.stem for path in result_paths if path.stem not in assignment_ids)
+    if orphan_result_ids:
+        raise WorkspaceError(f"存在没有 assignment 的结果：{', '.join(orphan_result_ids)}")
+    source_paths = sorted((workspace / "sources").glob("*.jsonl"))
+    orphan_source_ids = sorted(
+        path.stem for path in source_paths
+        if path.stem not in assignment_ids and path.stem != "main"
+    )
+    if orphan_source_ids:
+        raise WorkspaceError(f"存在没有 assignment 的来源文件：{', '.join(orphan_source_ids)}")
 
+    results: list[dict[str, Any]] = []
     sources_by_id: dict[str, dict[str, Any]] = {}
-    for path in sorted((workspace / "sources").glob("*.jsonl")):
-        for source in read_jsonl(path):
+    source_snapshots_by_id: dict[str, dict[str, Any]] = {}
+    for assignment_path in assignment_paths:
+        task_id = assignment_path.stem
+        result_path = workspace / "results" / f"{task_id}.json"
+        if not result_path.exists():
+            continue
+        source_path = workspace / "sources" / f"{task_id}.jsonl"
+        if not source_path.is_file():
+            raise WorkspaceError(f"任务 {task_id} 缺少已提交来源文件：sources/{task_id}.jsonl")
+        assignment = read_json(assignment_path)
+        result = read_json(result_path)
+        task_sources = read_jsonl(source_path)
+        task_snapshots = validate_submitted_result(
+            workspace, assignment, result, task_sources
+        )
+        results.append(result)
+        for source in task_sources:
             source_id = source.get("id")
             if not source_id:
-                raise WorkspaceError(f"来源缺少 id：{path}")
+                raise WorkspaceError(f"来源缺少 id：{source_path}")
             existing = sources_by_id.get(source_id)
             if existing is not None and existing != source:
                 raise WorkspaceError(f"来源 id 冲突：{source_id}")
             sources_by_id[source_id] = source
-
-    source_snapshots_by_id: dict[str, dict[str, Any]] = {}
-    for result in results:
-        task_id = str(result.get("task_id") or "")
-        for source_snapshot in load_task_source_snapshots(
-            workspace, task_id, result.get("source_snapshot_ids") or []
-        ):
+        for source_snapshot in task_snapshots:
             snapshot_id = str(source_snapshot["snapshot_id"])
             existing = source_snapshots_by_id.get(snapshot_id)
             if existing is not None and existing != source_snapshot:
                 raise WorkspaceError(f"酒旅快照 id 冲突：{snapshot_id}")
             source_snapshots_by_id[snapshot_id] = source_snapshot
 
+    main_source_path = workspace / "sources" / "main.jsonl"
+    if main_source_path.is_file():
+        main_sources = read_jsonl(main_source_path)
+        normalized_main_sources = normalize_sources(main_sources, "main")
+        if any(source.get("task_id") != "main" for source in main_sources):
+            raise WorkspaceError("主 Agent 来源文件包含错误 task_id")
+        for source in normalized_main_sources:
+            source_id = source["id"]
+            existing = sources_by_id.get(source_id)
+            if existing is not None and existing != source:
+                raise WorkspaceError(f"来源 id 冲突：{source_id}")
+            sources_by_id[source_id] = source
+
     merged_at = now()
+    shared_entities, entity_conflicts = merge_shared_entities(results)
+    event_bindings = [
+        {"task_id": result.get("task_id"), **binding}
+        for result in results
+        for binding in result.get("event_bindings") or []
+    ]
+    constraints = [
+        {"task_id": result.get("task_id"), **constraint}
+        for result in results
+        for constraint in result.get("constraints") or []
+    ]
+    unresolved = [
+        {"task_id": result.get("task_id"), **item}
+        for result in results
+        for item in result.get("unresolved") or []
+    ]
+    task_index = [{
+        "task_id": result.get("task_id"),
+        "domain": result.get("domain"),
+        "stage": result.get("stage"),
+        "status": result.get("status"),
+        "summary": result.get("summary") or "",
+        "submitted_at": result.get("submitted_at"),
+        "input_revision": result.get("input_revision"),
+        "result_path": f"results/{result.get('task_id')}.json",
+        "source_path": f"sources/{result.get('task_id')}.jsonl",
+        "source_snapshot_ids": result.get("source_snapshot_ids") or [],
+    } for result in results]
     research = {
+        "schema_version": "travel-research-state/v2",
         "trip_id": read_json(workspace / "manifest.json")["trip_id"],
         "selected_route": read_json(workspace / "selected-route.json") if (workspace / "selected-route.json").exists() else None,
-        "tasks": results,
+        "tasks": task_index,
+        "global_state": {
+            "shared_entities": shared_entities,
+            "conflicts": entity_conflicts,
+            "event_bindings": event_bindings,
+            "constraints": constraints,
+            "unresolved": unresolved,
+        },
+        "indexes": {
+            "sources": "state/sources.json",
+            "source_snapshots": "state/source-snapshots.json",
+            "archive": "state/archive.json",
+        },
         "merged_at": merged_at,
         "partial": bool(snapshot["pending_count"]),
-        "library_seed": read_json(workspace / "state" / "library-seed.json"),
-        "source_snapshots": list(source_snapshots_by_id.values()),
     }
     sources = {"sources": list(sources_by_id.values()), "merged_at": merged_at}
     archive = {"records": collect_archive_records(workspace), "merged_at": merged_at}
-    catalog_candidates = {
-        "candidates": [
-            {"task_id": result.get("task_id"), "candidate": candidate}
-            for result in results for candidate in result.get("catalog_candidates") or []
-        ],
-        "merged_at": merged_at,
-        "promotion_policy": "主 Agent 审核后使用 travel_library.py promote；禁止自动晋升",
-    }
     write_json(workspace / "state" / "research.json", research)
     write_json(workspace / "state" / "sources.json", sources)
     write_json(
@@ -1092,7 +1232,6 @@ def merge(args: argparse.Namespace) -> dict[str, Any]:
         {"source_snapshots": list(source_snapshots_by_id.values()), "merged_at": merged_at},
     )
     write_json(workspace / "state" / "archive.json", archive)
-    write_json(workspace / "state" / "catalog-candidates.json", catalog_candidates)
     return {
         "status": "merged",
         "workspace": str(workspace),
@@ -1100,7 +1239,8 @@ def merge(args: argparse.Namespace) -> dict[str, Any]:
         "source_count": len(sources_by_id),
         "source_snapshot_count": len(source_snapshots_by_id),
         "archive_count": len(archive["records"]),
-        "catalog_candidate_count": len(catalog_candidates["candidates"]),
+        "shared_entity_count": len(shared_entities),
+        "shared_entity_conflict_count": len(entity_conflicts),
         "partial": research["partial"],
     }
 
@@ -1120,7 +1260,6 @@ def build_parser() -> argparse.ArgumentParser:
     command.add_argument("--preferences", action="append")
     command.add_argument("--constraints", action="append")
     command.add_argument("--brief-file")
-    command.add_argument("--library-root", help="跨行程公共资料库目录；默认与 .travel-research 同级的 .travel-library")
     command.set_defaults(handler=init_workspace)
 
     command = subparsers.add_parser("select-route", help="保存用户已确认的路线")
@@ -1161,18 +1300,7 @@ def build_parser() -> argparse.ArgumentParser:
     command.add_argument("--checked-at")
     command.add_argument("--valid-until")
     command.add_argument("--freshness", choices=sorted(FRESHNESS_CLASSES), default="dynamic")
-    command.add_argument("--reuse-scope", choices=sorted(REUSE_SCOPES), default="trip_only")
     command.set_defaults(handler=archive)
-
-    command = subparsers.add_parser("search-archive", help="跨历史行程检索可复用研究档案")
-    command.add_argument("--root", default=".travel-research")
-    command.add_argument("--query")
-    command.add_argument("--location")
-    command.add_argument("--topic")
-    command.add_argument("--tag")
-    command.add_argument("--include-trip-only", action="store_true")
-    command.add_argument("--limit", type=int, default=20, choices=range(1, 101), metavar="1-100")
-    command.set_defaults(handler=search_archive)
 
     command = subparsers.add_parser("status", help="查看任务和共享状态")
     command.add_argument("--workspace", required=True)

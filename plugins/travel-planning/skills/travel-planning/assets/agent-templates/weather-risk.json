@@ -1,5 +1,5 @@
 {
-  "schema_version": "travel-research-result/v1",
+  "schema_version": "travel-research-result/v2",
   "template_version": 1,
   "template_digest": "COPY_FROM_ASSIGNMENT",
   "task_id": "COPY_FROM_ASSIGNMENT",
@@ -11,7 +11,7 @@
     "event_impacts": [],
     "route_impacts": []
   },
-  "catalog_candidates": [],
+  "shared_entities": [],
   "event_bindings": [],
   "constraints": [],
   "unresolved": [],
