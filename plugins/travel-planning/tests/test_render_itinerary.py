@@ -421,6 +421,17 @@ class RenderItineraryTest(unittest.TestCase):
         self.assertIn("https://www.xiaohongshu.com/explore/example-note", html)
         self.assertNotIn("xhscdn.com", html)
 
+    def test_fact_grid_allows_long_machine_values_to_wrap_on_mobile(self) -> None:
+        html = render_itinerary.build(self.load_example())
+        self.assertIn(
+            ".event-facts>div{grid-template-columns:92px minmax(0,1fr)}",
+            html,
+        )
+        self.assertIn(
+            ".event-facts dd{min-width:0;overflow-wrap:anywhere}",
+            html,
+        )
+
     def test_transport_route_embeds_no_key_amap_route_page(self) -> None:
         data = self.load_example()
         route = data["planning"]["transport_edges"][0]
