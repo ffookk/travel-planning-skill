@@ -413,7 +413,7 @@ def load_source_snapshots(workspace: Path, task_results: dict[str, dict[str, Any
     return list(snapshots.values())
 
 
-def collect_sources(workspace: Path) -> list[dict[str, Any]]:
+def collect_sources(workspace: Path, allowed_ids: list[str] | None = None) -> list[dict[str, Any]]:
     merged: dict[str, dict[str, Any]] = {}
     for path in sorted((workspace / "sources").glob("*.jsonl")):
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
@@ -436,7 +436,12 @@ def collect_sources(workspace: Path) -> list[dict[str, Any]]:
                     **({"kind": item["kind"]} if item.get("kind") else {}),
                     **({"provider": item["provider"]} if item.get("provider") else {}),
                 }
-    return list(merged.values())
+    if allowed_ids is None:
+        return list(merged.values())
+    missing = [source_id for source_id in allowed_ids if source_id not in merged]
+    if missing:
+        raise AssemblyError(f"来源白名单包含未登记 ID：{missing}")
+    return [merged[source_id] for source_id in allowed_ids]
 
 
 def normalize_collections(
@@ -590,7 +595,8 @@ def assemble(workspace: Path, plan_path: Path) -> dict[str, Any]:
     return {
         "trip": deepcopy(plan["trip"]), "workflow": deepcopy(plan["workflow"]),
         "route_proposals": deepcopy(plan.get("route_proposals") or []),
-        "planning": planning, "days": days, "sources": collect_sources(workspace),
+        "planning": planning, "days": days,
+        "sources": collect_sources(workspace, plan.get("source_ids")),
         **({"claims": deepcopy(plan["claims"])} if "claims" in plan else {}),
     }
 

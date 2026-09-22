@@ -38,6 +38,19 @@ PROVIDER_DISPLAY_NAMES = {
     "高德地图": "高德",
     "xiaohongshu": "小红书",
 }
+FRONTEND_ASSET_ROOT = Path(__file__).resolve().parents[1] / "assets" / "frontend"
+
+
+def load_frontend_asset(name: str, closing_tag: str) -> str:
+    """Load a compiled Vue asset and keep it safe for inline HTML delivery."""
+    path = FRONTEND_ASSET_ROOT / name
+    if not path.is_file():
+        raise RuntimeError(
+            f"缺少已编译的页面资源：{path}。请在插件 web 目录运行 npm ci && npm run build。"
+        )
+    return path.read_text(encoding="utf-8").replace(
+        f"</{closing_tag}", f"<\\/{closing_tag}"
+    )
 
 def esc(value: Any) -> str:
     return html.escape(str(value or ""), quote=True)
@@ -1693,7 +1706,7 @@ def render_overview(
           <tr class="overview-day-row"><th id="{heading_id}" colspan="3"><strong>{esc(day_meta)}</strong>{f'<span>{esc(summary)}</span>' if summary else ''}</th></tr>
           {''.join(rows) if rows else '<tr><td colspan="3" class="overview-empty">这一天还没有安排。</td></tr>'}
         </tbody>''')
-    return f'''<section class="itinerary-overview" id="overview-view" data-itinerary-view="overview" hidden aria-labelledby="overview-heading">
+    return f'''<section class="itinerary-overview" id="overview-view" data-itinerary-view="overview" aria-labelledby="overview-heading">
       <header class="overview-heading"><span class="eyebrow">紧凑版</span><h2 id="overview-heading">行程一览</h2><p>按时间、地点与执行要点汇总；左右滑动可查看完整表格。</p></header>
       <div class="overview-table-wrap" role="region" aria-label="行程一览表" tabindex="0"><table class="overview-table">
         <colgroup><col class="overview-time-col"><col class="overview-place-col"><col></colgroup>
@@ -1743,7 +1756,7 @@ def render_route_overview(
           <header class="route-day-heading"><div><span class="eyebrow">{esc(day_meta)}</span><h3 id="{heading_id}">{esc(day.get("title") or "当日路线")}</h3></div><span>{esc(count_text)}</span></header>
           <div class="route-day-maps">{route_html if route_html else '<p class="route-day-empty">当天没有可展示的完整高德路线。</p>'}</div>
         </section>''')
-    return f'''<section class="itinerary-routes" id="route-view" data-itinerary-view="routes" hidden aria-labelledby="route-heading">
+    return f'''<section class="itinerary-routes" id="route-view" data-itinerary-view="routes" aria-labelledby="route-heading">
       <header class="route-view-heading"><span class="eyebrow">按天查看</span><h2 id="route-heading">路线图</h2><p>每一天只显示一张高德导览图，按实际游览顺序串起当天全部停靠点。</p></header>
       {''.join(day_sections) if day_sections else '<p class="route-day-empty">当前行程还没有可展示的完整高德路线。</p>'}
     </section>'''
@@ -1897,6 +1910,8 @@ def render_day(
 
 def build(data: dict[str, Any]) -> str:
     validate_data(data)
+    frontend_css = load_frontend_asset("itinerary-app.css", "style")
+    frontend_js = load_frontend_asset("itinerary-app.js", "script")
     trip, days = data.get("trip") or {}, data.get("days") or []
     planning = data.get("planning") or {}
     attractions = {str(x.get("id")): x for x in planning.get("attractions") or [] if x.get("id")}
@@ -1947,59 +1962,10 @@ def build(data: dict[str, Any]) -> str:
 [data-itinerary-view][hidden] *::before,[data-itinerary-view][hidden] *::after{{content:none!important}}
 html[data-itinerary-view="routes"] .sources,html[data-itinerary-view="routes"] .footer{{display:none}}
 .route-map,.route-map-head,.route-map-head>div:first-child,.route-stop-list{{min-width:0;max-width:100%}}.route-map-head strong{{overflow-wrap:anywhere}}.route-stop-list{{display:flex;gap:0;margin:0 0 11px;padding:0 2px;list-style:none;overflow-x:auto;scrollbar-width:thin}}.route-stop-list li{{position:relative;display:flex;flex:1 0 132px;gap:7px;align-items:flex-start;padding-right:16px;min-width:0}}.route-stop-list li:not(:last-child):after{{content:"";position:absolute;left:24px;right:0;top:11px;height:2px;background:#b9d2c2}}.route-stop-list li>span{{position:relative;z-index:1;display:grid;flex:0 0 24px;width:24px;height:24px;place-items:center;border-radius:50%;background:#167743;color:#fff;font-size:10px;font-weight:850}}.route-stop-list li:first-child>span,.route-stop-list li:last-child>span{{background:#24231f}}.route-stop-list li>div{{position:relative;z-index:1;min-width:0;background:#fff;padding-right:4px}}.route-stop-list strong,.route-stop-list small{{display:block}}.route-stop-list strong{{font-size:11px;line-height:1.35}}.route-stop-list small{{margin-top:2px;color:var(--muted);font-size:9px;line-height:1.3}}@media(max-width:620px){{.route-map-head{{width:100%}}.route-stop-list li{{flex-basis:112px}}}}
-</style></head><body><header class="hero"><div class="hero-inner"><span class="kicker">旅行计划</span><h1>{esc(trip.get("title"))}</h1><p class="trip-subtitle">{esc(trip.get("subtitle"))}</p><p class="meta">{esc(meta)}</p><nav class="view-switcher" role="tablist" aria-label="行程展示方式"><button type="button" role="tab" aria-selected="true" aria-controls="detail-view" data-view-target="detail">详细行程</button><button type="button" role="tab" aria-selected="false" aria-controls="overview-view" data-view-target="overview" tabindex="-1">行程一览</button><button type="button" role="tab" aria-selected="false" aria-controls="route-view" data-view-target="routes" tabindex="-1">路线图</button></nav></div></header>
+{frontend_css}
+</style></head><body><input class="itinerary-view-state" type="radio" name="itinerary-view" id="itinerary-view-detail" checked aria-label="显示详细行程"><input class="itinerary-view-state" type="radio" name="itinerary-view" id="itinerary-view-overview" aria-label="显示行程一览"><input class="itinerary-view-state" type="radio" name="itinerary-view" id="itinerary-view-routes" aria-label="显示路线图"><header class="hero"><div class="hero-inner"><span class="kicker">旅行计划</span><h1>{esc(trip.get("title"))}</h1><p class="trip-subtitle">{esc(trip.get("subtitle"))}</p><p class="meta">{esc(meta)}</p><div id="itinerary-view-controls"><nav class="view-switcher" data-fallback-view-switcher aria-label="行程展示方式"><label for="itinerary-view-detail">详细行程</label><label for="itinerary-view-overview">行程一览</label><label for="itinerary-view-routes">路线图</label></nav></div></div></header>
 <main><section id="detail-view" data-itinerary-view="detail">{day_html}</section>{overview_html}{route_overview_html}{f'<details class="sources"><summary>信息来源（{len(data.get("sources") or [])} 条）</summary><ul>{sources_html}</ul></details>' if sources_html else ''}<p class="footer">最后更新：{esc(trip.get("updated_at") or "未注明")} · 出发前请再次核对时刻、价格与开放状态</p></main>
-<script>
-const viewTabs=[...document.querySelectorAll('[data-view-target]')];
-const itineraryViews=[...document.querySelectorAll('[data-itinerary-view]')];
-const activateView=target=>{{
-  itineraryViews.forEach(view=>{{view.hidden=view.dataset.itineraryView!==target}});
-  viewTabs.forEach(tab=>{{const active=tab.dataset.viewTarget===target;tab.setAttribute('aria-selected',String(active));tab.tabIndex=active?0:-1}});
-  document.documentElement.dataset.itineraryView=target;
-}};
-viewTabs.forEach((tab,index)=>{{
-  tab.addEventListener('click',()=>activateView(tab.dataset.viewTarget));
-  tab.addEventListener('keydown',event=>{{
-    if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
-    event.preventDefault();
-    const next=event.key==='Home'?0:event.key==='End'?viewTabs.length-1:(index+(event.key==='ArrowRight'?1:-1)+viewTabs.length)%viewTabs.length;
-    viewTabs[next].focus();activateView(viewTabs[next].dataset.viewTarget);
-  }});
-}});
-const mapFrames=[...document.querySelectorAll('.route-map-frame[data-src]')];
-const mobileMap=typeof navigator.userAgentData?.mobile==='boolean'?navigator.userAgentData.mobile:/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-const loadMap=f=>{{const target=mobileMap&&(f.dataset.mobileSrc||'')?f.dataset.mobileSrc:f.dataset.src;if(!f.src||f.src==='about:blank'||f.src!==target)f.src=target}};
-if('IntersectionObserver'in window){{
-  const mapObserver=new IntersectionObserver(es=>es.forEach(e=>{{if(!e.isIntersecting)return;loadMap(e.target);mapObserver.unobserve(e.target)}}),{{rootMargin:'500px 0px'}});
-  mapFrames.forEach(f=>mapObserver.observe(f));
-}}else if(mapFrames[0]){{loadMap(mapFrames[0])}}
-const fullscreenButtons=[...document.querySelectorAll('.route-map-fullscreen')];
-const fullscreenElement=()=>document.fullscreenElement||document.webkitFullscreenElement;
-const syncFullscreenButtons=()=>fullscreenButtons.forEach(b=>{{const active=fullscreenElement()===b.closest('.route-map');b.textContent=active?'退出全屏':'全屏查看';b.setAttribute('aria-pressed',String(active))}});
-const openActiveMap=map=>{{const f=map.querySelector('.route-map-frame');const url=f?.src&&f.src!=='about:blank'?f.src:(mobileMap?f?.dataset.mobileSrc:f?.dataset.src);if(url)window.open(url,'_blank','noopener,noreferrer')}};
-fullscreenButtons.forEach(b=>b.addEventListener('click',()=>{{
-  const map=b.closest('.route-map');
-  if(fullscreenElement()===map){{const exit=document.exitFullscreen?.bind(document)||document.webkitExitFullscreen?.bind(document);if(exit)exit();return}}
-  const enter=map.requestFullscreen?.bind(map)||map.webkitRequestFullscreen?.bind(map);
-  if(!enter){{openActiveMap(map);return}}
-  try{{const pending=enter();if(pending?.catch)pending.catch(()=>openActiveMap(map))}}catch{{openActiveMap(map)}}
-}}));
-document.addEventListener('fullscreenchange',syncFullscreenButtons);
-document.addEventListener('webkitfullscreenchange',syncFullscreenButtons);
-const fallbackCopy=text=>{{
-  const field=document.createElement('textarea');field.value=text;field.setAttribute('readonly','');field.style.position='fixed';field.style.opacity='0';document.body.append(field);field.select();
-  const copied=document.execCommand('copy');field.remove();return copied;
-}};
-document.querySelectorAll('[data-wechat-account]').forEach(button=>button.addEventListener('click',async()=>{{
-  const account=button.dataset.wechatAccount||'';
-  const menu=button.dataset.wechatMenu||'';
-  const status=button.closest('.actions')?.querySelector('.wechat-account-status');
-  let copied=false;
-  try{{if(navigator.clipboard?.writeText){{await navigator.clipboard.writeText(account);copied=true}}else{{copied=fallbackCopy(account)}}}}catch{{copied=fallbackCopy(account)}}
-  if(status)status.textContent=copied?`已复制“${{account}}”，请打开微信搜索${{menu?`，再进入“${{menu}}”`:''}}。`:`请打开微信搜索“${{account}}”${{menu?`，再进入“${{menu}}”`:''}}。`;
-  if(copied){{const original=button.textContent;button.textContent='已复制，打开微信搜索';setTimeout(()=>button.textContent=original,2400)}}
-}}));
-</script></body></html>'''
+<script>{frontend_js}</script></body></html>'''
 
 
 def main() -> None:

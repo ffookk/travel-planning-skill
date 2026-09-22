@@ -9,7 +9,7 @@
 | 飞常准 | 单一 `variflight` Skill + Aviation 与 Tripmatch stdio MCP Server |
 | 高德 | `amap-maps` Skill + 官方 stdio MCP Server + Web 服务 API |
 | OpenStreetMap、Open-Meteo | 公开 API |
-| 行程生成 | 插件内 `travel-planning` Skill 与 Python 工具 |
+| 行程生成 | 插件内 `travel-planning` Skill、Python 数据渲染器与 Vue/Vite 交互层 |
 
 插件统一的是安装、发现、权限说明和旅行编排，不强制把已有 CLI 或 API 重写成 MCP。
 
@@ -54,9 +54,12 @@ python3 skills/travel-planning/scripts/research_sources.py xhs-login-status
 ## 验证
 
 ```bash
+make frontend
 python3 /Users/mater/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/travel-planning
 (cd plugins/travel-planning && python3 -m unittest discover -s tests -p 'test_*.py')
 ```
+
+Vue 源码位于 `plugins/travel-planning/web/`。Vite 将兼容转译后的交互脚本和样式写入 Skill 的 `assets/frontend/`，Python 渲染器再把它们内联进最终的 `itinerary.html`；最终行程交付不需要旁加载 `.js` 或 `.css` 文件。JavaScript 被微信附件预览禁用时，页面由纯 CSS 单选状态继续完成三个视图的显示与隐藏。
 
 ## 打包
 

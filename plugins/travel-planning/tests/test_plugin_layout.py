@@ -98,6 +98,16 @@ class PluginLayoutTest(unittest.TestCase):
         schema = json.loads((skill / "schemas" / "itinerary-plan.schema.json").read_text(encoding="utf-8"))
         self.assertEqual(schema["properties"]["schema_version"]["const"], "itinerary-plan/v1")
 
+    def test_travel_planning_ships_compiled_vue_frontend(self) -> None:
+        frontend = ROOT / "skills" / "travel-planning" / "assets" / "frontend"
+        web = ROOT / "web"
+        self.assertTrue((web / "package.json").is_file())
+        self.assertTrue((web / "package-lock.json").is_file())
+        self.assertTrue((web / "src" / "App.vue").is_file())
+        self.assertIn("v-show", (web / "src" / "App.vue").read_text(encoding="utf-8"))
+        self.assertTrue((frontend / "itinerary-app.js").is_file())
+        self.assertTrue((frontend / "itinerary-app.css").is_file())
+
     def test_legacy_top_level_integration_directories_are_absent(self) -> None:
         self.assertFalse((ROOT / "integrations").exists())
         self.assertFalse((ROOT / "third_party").exists())
