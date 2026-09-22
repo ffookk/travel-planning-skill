@@ -79,7 +79,13 @@
       "minimum": 1
     },
     "planning": {
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "daily_routes": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/dailyRoute"}
+        }
+      }
     },
     "days": {
       "type": "array",
@@ -158,6 +164,34 @@
         "entry": {"type": "object"},
         "exit": {"type": "object"},
         "overrides": {"type": "object"}
+      }
+    },
+    "dailyRoute": {
+      "type": "object",
+      "required": ["id", "date", "title", "stops"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "date": {"type": "string", "format": "date"},
+        "title": {"type": "string", "minLength": 1},
+        "mode": {"enum": ["car", "bus", "walk"]},
+        "assumption": {"type": "string"},
+        "stops": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 18,
+          "items": {
+            "type": "object",
+            "required": ["name", "coordinates", "coordinate_system"],
+            "properties": {
+              "event_id": {"type": "string", "minLength": 1},
+              "name": {"type": "string", "minLength": 1},
+              "coordinates": {"type": "string", "pattern": "^-?[0-9]+(?:\\.[0-9]+)?,-?[0-9]+(?:\\.[0-9]+)?$"},
+              "coordinate_system": {"const": "GCJ-02"},
+              "poi_id": {"type": "string", "minLength": 1},
+              "note": {"type": "string"}
+            }
+          }
+        }
       }
     }
   }

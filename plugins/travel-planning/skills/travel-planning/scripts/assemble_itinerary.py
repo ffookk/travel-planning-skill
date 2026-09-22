@@ -12,7 +12,7 @@ from typing import Any
 
 
 ALLOWED_ACTION_TYPES = {
-    "map", "official", "official_homepage", "official_notice", "official_booking",
+    "map", "official", "official_homepage", "official_notice", "official_booking", "official_wechat",
     "weather", "weather_warning", "ticket", "train", "bus", "hotel",
     "restaurant", "guide", "image_source", "source",
 }
@@ -249,24 +249,27 @@ def build_attraction_event(
         point = deep_merge(source, overrides.get(str(source.get("id")), {}))
         point_start = min(end - 5, start + (index - 1) * step)
         point_end = min(end, point_start + step)
-        checkpoints.append({
+        checkpoint = {
             "id": f"cp-{attraction['id']}-{index}", "order": index,
             "time": time_text(point_start), "end_time": time_text(point_end),
             "kind": point.get("kind") or ("entry" if index == 1 else ("exit" if index == len(blueprint) else "visit")),
             "name": point.get("name") or f"节点{index}", "required": point.get("required", True),
             "instruction": point.get("instruction") or point.get("action") or defaults["checkpoint_instruction"],
-            "narration": point.get("narration") or defaults["checkpoint_narration"],
             "move_from_previous": point.get("move_from_previous") or {
                 "mode": "步行/景区官方接驳", "duration": "按现场客流",
             },
             "source_ids": point.get("source_ids") or attraction.get("source_ids") or [],
-        })
+        }
+        if point.get("narration"):
+            checkpoint["narration"] = point["narration"]
+        checkpoints.append(checkpoint)
     reservation = attraction.get("reservation") or {}
     official = attraction.get("official") or {}
+    wechat = official.get("wechat") or {}
     operation = attraction.get("operations") or {}
     entry = deep_merge(attraction.get("entrance") or {}, config.get("entry") or {})
     exit_point = deep_merge(attraction.get("exit") or {}, config.get("exit") or {})
-    action_url = official.get("booking_url") or official.get("homepage_url")
+    action_url = official.get("booking_url") or wechat.get("guide_url") or official.get("homepage_url")
     result = {
         "id": config["event_id"], "time": config["start"], "end_time": config["end"],
         "type": "attraction", "attraction_id": attraction["id"], "title": config["title"],
@@ -307,7 +310,16 @@ def build_booking_task(
 ) -> dict[str, Any]:
     reservation = attraction.get("reservation") or {}
     official = attraction.get("official") or {}
-    link = reservation.get("booking_url") or official.get("booking_url") or official.get("notice_url")
+    wechat = official.get("wechat") or {}
+    link = (
+        reservation.get("booking_url") or official.get("booking_url")
+        or wechat.get("guide_url") or official.get("notice_url")
+    )
+    link_type = "official_notice"
+    if reservation.get("booking_url") or official.get("booking_url"):
+        link_type = "official_booking"
+    elif wechat.get("guide_url"):
+        link_type = "official_wechat"
     return {
         "id": f"book-{attraction['id']}", "title": f"核验并完成{attraction['name']}预约",
         "product": defaults["booking_product"], "quantity": defaults["booking_quantity"],
@@ -318,8 +330,9 @@ def build_booking_task(
         "target_session": event["time"], "action": reservation.get("action") or "查看开放和限流公告",
         "event_id": event["id"], "attraction_id": attraction["id"],
         "action_links": [{
-            "type": "official_booking" if reservation.get("booking_url") else "official_notice",
-            "label": "打开官方预约/公告", "provider": attraction["name"], "url": link,
+            "type": link_type,
+            "label": "打开公众号预约说明" if link_type == "official_wechat" else "打开官方预约/公告",
+            "provider": attraction["name"], "url": link,
             "checked_at": defaults["checked_at"], "disclaimer": defaults["booking_disclaimer"],
         }] if str(link or "").startswith("https://") else [],
     }
@@ -343,7 +356,6 @@ def default_settings(plan: dict[str, Any]) -> dict[str, Any]:
         "booking_disclaimer": "仅以官方渠道显示的适用日期、票种和时段为准",
         "location_verification_method": "地图POI全名、城市/行政区、完整地址与坐标交叉核验",
         "checkpoint_instruction": "按现场开放、导流和安全要求完成该节点。",
-        "checkpoint_narration": "先完成核心点，再根据排队、天气和体力决定是否停留。",
         "attraction_subtitle": "预约、天气与现场导流均为硬约束；不为打卡压缩下一段缓冲。",
         "entry_requirement": "携带本人有效证件，按预约时段入场",
         "temporary_notice": "临时公告发布后覆盖常规规则",

@@ -17,6 +17,7 @@
           "booking_url": null,
           "booking_status": "not_applicable",
           "notice_url": "https://",
+          "wechat": null,
           "checked_at": ""
         },
         "operations": {

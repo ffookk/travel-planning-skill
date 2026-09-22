@@ -22,6 +22,7 @@ python3 skills/travel-planning/scripts/research_workspace.py init \
 .travel-research/<trip-id>/
 |-- manifest.json
 |-- brief.json
+|-- route-context.json
 |-- route-proposals.json
 |-- selected-route.json
 |-- assignments/
@@ -44,7 +45,7 @@ python3 skills/travel-planning/scripts/research_workspace.py init \
 
 ## 路线确认
 
-主 Agent 将路线候选写入 `route-proposals.json`。用户确认后执行：
+主 Agent 先将路线前小红书轻量预研写入 `route-context.json`，再结合 brief 生成 `route-proposals.json`。`route-context.json` 只保存公开原帖引用、查询时间、路线信号、地方美食主题、冲突和置信度；若来源不可用则写入失败类型与建议查询词，不保存临时令牌。用户确认后执行：
 
 ```bash
 python3 skills/travel-planning/scripts/research_workspace.py select-route \

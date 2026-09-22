@@ -58,9 +58,10 @@
     },
     "endpoint": {
       "type": "object",
-      "required": ["name", "coordinates"],
+      "required": ["name", "physical_address", "coordinates"],
       "properties": {
         "name": {"type": "string", "minLength": 1},
+        "physical_address": {"type": "string", "minLength": 1},
         "coordinates": {"type": "string", "pattern": "^-?[0-9]+(?:\\.[0-9]+)?\\s*,\\s*-?[0-9]+(?:\\.[0-9]+)?$"}
       },
       "additionalProperties": true

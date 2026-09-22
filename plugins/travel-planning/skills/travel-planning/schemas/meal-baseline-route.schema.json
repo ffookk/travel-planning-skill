@@ -36,9 +36,10 @@
   "$defs": {
     "anchor": {
       "type": "object",
-      "required": ["name", "coordinates", "coordinate_system"],
+      "required": ["name", "physical_address", "coordinates", "coordinate_system"],
       "properties": {
         "name": {"type": "string", "minLength": 1},
+        "physical_address": {"type": "string", "minLength": 1},
         "coordinates": {"type": "string", "pattern": "^-?[0-9]+(?:\\.[0-9]+)?\\s*,\\s*-?[0-9]+(?:\\.[0-9]+)?$"},
         "coordinate_system": {"enum": ["GCJ-02", "WGS84"]}
       },

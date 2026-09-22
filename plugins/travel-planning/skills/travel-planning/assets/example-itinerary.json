@@ -156,6 +156,33 @@
         "source_ids": []
       }
     ],
+    "daily_routes": [
+      {
+        "id": "daily-route-2026-10-17",
+        "date": "2026-10-17",
+        "title": "酒店—湖滨—断桥—灵隐片区",
+        "mode": "car",
+        "assumption": "用于串联当天全部停靠点的导览顺序；分段出行方式仍以详细行程为准。",
+        "stops": [
+          {"event_id": "e-d1-r1", "name": "龙翔桥附近酒店", "coordinates": "120.165438,30.255247", "coordinate_system": "GCJ-02", "note": "出发"},
+          {"event_id": "e-d1-a1", "name": "湖滨公园入口", "coordinates": "120.156800,30.254900", "coordinate_system": "GCJ-02"},
+          {"event_id": "e-d1-a1", "name": "断桥东侧", "coordinates": "120.148270,30.263600", "coordinate_system": "GCJ-02"},
+          {"event_id": "e-d1-m1", "name": "灵隐片区", "coordinates": "120.102000,30.240000", "coordinate_system": "GCJ-02", "note": "午餐与后续游览"}
+        ]
+      },
+      {
+        "id": "daily-route-2026-10-18",
+        "date": "2026-10-18",
+        "title": "龙井村—午餐—酒店片区",
+        "mode": "car",
+        "assumption": "用于串联当天全部停靠点的导览顺序；步行和返程交通仍按详细行程执行。",
+        "stops": [
+          {"event_id": "e-d2-a2", "name": "龙井村公交站附近", "coordinates": "120.104000,30.223000", "coordinate_system": "GCJ-02", "note": "徒步起终点"},
+          {"event_id": "e-d2-m2", "name": "龙井村午餐点", "coordinates": "120.103500,30.223500", "coordinate_system": "GCJ-02"},
+          {"event_id": "e-d2-r3", "name": "龙翔桥酒店片区", "coordinates": "120.165438,30.255247", "coordinate_system": "GCJ-02", "note": "取行李"}
+        ]
+      }
+    ],
     "intercity_options": [],
     "restaurants": [
       {"id": "restaurant-lingyin-a", "name": "灵隐杭帮面馆 A", "cuisine": ["杭帮面食"], "location": {"physical_address": "浙江省杭州市西湖区灵隐路88号A座", "coordinates": "120.102000,30.240000", "coordinate_system": "GCJ-02", "poi_id": "demo-lingyin-a", "poi_provider": "amap", "poi_source_id": "s-restaurant-platform", "poi_verified_at": "2026-09-20"}, "signature_dishes": ["片儿川", "小笼"], "media": [{"kind": "link_preview", "source_url": "https://example.com/lingyin-a", "alt": "查看灵隐杭帮面馆 A 官方相册", "source_label": "餐厅官方"}], "action_links": [{"type": "restaurant", "label": "查看灵隐杭帮面馆 A", "provider": "餐厅官方", "url": "https://example.com/lingyin-a"}], "source_ids": ["s-restaurant-platform"]},
@@ -172,16 +199,16 @@
       {"schema_version": "restaurant-source-snapshot/v1", "snapshot_id": "snap-longjing-tea", "restaurant_id": "restaurant-longjing-tea", "applicable_date": "2026-10-18", "time_window": "10:35–10:55", "status": "to_recheck", "platform_signals": [{"platform": "地图平台", "rating": null, "scale": "5", "review_count": null, "per_person": "约¥30–60", "status": "unavailable", "unavailable_reason": "茶歇点选择依现场营业", "checked_at": "2026-09-20", "source_ids": ["s-restaurant-platform"]}], "community_consensus": {"platform": "小红书", "status": "unavailable", "query_runs": [{"keyword": "龙井村 茶歇 途中", "filters": {"publish_time": "year"}, "executed_at": "2026-09-20"}], "failure_kind": "no_results", "unavailable_reason": "该路线内即时茶歇点未取得可核验近期笔记", "manual_action_links": [{"label": "在小红书搜索龙井村茶歇", "url": "https://www.xiaohongshu.com/search_result?keyword=%E9%BE%99%E4%BA%95%E6%9D%91%E8%8C%B6%E6%AD%87"}], "recheck_at": "2026-10-18T10:30:00+08:00", "notes_considered": 0, "recent_note_count": 0, "positive": [], "negative": [], "promotion_risk": "unknown", "confidence": "low", "checked_at": "2026-09-20", "references": []}, "operations": {"opening_hours": "现场公示", "reservation": "不预约", "queue": "即时有座才进入", "parking": "步行", "status": "to_recheck", "checked_at": "2026-09-20", "recheck_at": "2026-10-18T10:30:00+08:00"}, "checked_at": "2026-09-20", "expires_at": "2026-10-18T10:30:00+08:00", "action_links": [{"type": "restaurant", "label": "查看龙井茶歇点", "provider": "地图平台", "url": "https://example.com/longjing-tea-map"}], "source_ids": ["s-restaurant-platform"]}
     ],
     "meal_baseline_routes": [
-      {"id": "baseline-m1", "meal_id": "m1", "from_anchor": {"name": "灵隐片区上一站出口", "coordinates": "120.100000,30.240000", "coordinate_system": "GCJ-02"}, "to_anchor": {"name": "下午路线入口", "coordinates": "120.110000,30.240000", "coordinate_system": "GCJ-02"}, "mode": "walking", "routing_policy": "shortest_time", "departure_at": "2026-10-17T12:10:00+08:00", "distance_meters": 1200, "duration_minutes": 15, "door_to_door_minutes": 18, "map_url": "https://uri.amap.com/navigation?from=120.100000,30.240000&to=120.110000,30.240000&mode=walk", "checked_at": "2026-09-20", "source_ids": ["s-restaurant-map"]},
-      {"id": "baseline-m2", "meal_id": "m2", "from_anchor": {"name": "龙井村徒步出口", "coordinates": "120.104000,30.223000", "coordinate_system": "GCJ-02"}, "to_anchor": {"name": "龙井村返程上车点", "coordinates": "120.104000,30.223000", "coordinate_system": "GCJ-02"}, "mode": "walking", "routing_policy": "shortest_time", "departure_at": "2026-10-18T12:10:00+08:00", "distance_meters": 0, "duration_minutes": 0, "door_to_door_minutes": 16, "map_url": "https://uri.amap.com/navigation?from=120.104000,30.223000&to=120.104000,30.223000&mode=walk", "checked_at": "2026-09-20", "source_ids": ["s-restaurant-map"]},
-      {"id": "baseline-m3", "meal_id": "m3", "from_anchor": {"name": "龙井村步行路线中点", "coordinates": "120.104000,30.223000", "coordinate_system": "GCJ-02"}, "to_anchor": {"name": "龙井村返程方向", "coordinates": "120.104000,30.223000", "coordinate_system": "GCJ-02"}, "mode": "walking", "routing_policy": "shortest_time", "departure_at": "2026-10-18T10:35:00+08:00", "distance_meters": 0, "duration_minutes": 0, "door_to_door_minutes": 5, "map_url": "https://uri.amap.com/navigation?from=120.104000,30.223000&to=120.104000,30.223000&mode=walk", "checked_at": "2026-09-20", "source_ids": ["s-restaurant-map"]}
+      {"id": "baseline-m1", "meal_id": "m1", "from_anchor": {"name": "灵隐片区上一站出口", "physical_address": "浙江省杭州市西湖区灵隐路灵隐片区公交站出口", "coordinates": "120.100000,30.240000", "coordinate_system": "GCJ-02"}, "to_anchor": {"name": "下午路线入口", "physical_address": "浙江省杭州市西湖区灵隐路117号下午路线入口", "coordinates": "120.110000,30.240000", "coordinate_system": "GCJ-02"}, "mode": "walking", "routing_policy": "shortest_time", "departure_at": "2026-10-17T12:10:00+08:00", "distance_meters": 1200, "duration_minutes": 15, "door_to_door_minutes": 18, "map_url": "https://uri.amap.com/navigation?from=120.100000,30.240000&to=120.110000,30.240000&mode=walk", "checked_at": "2026-09-20", "source_ids": ["s-restaurant-map"]},
+      {"id": "baseline-m2", "meal_id": "m2", "from_anchor": {"name": "龙井村徒步出口", "physical_address": "浙江省杭州市西湖区龙井路龙井村公共步道出口", "coordinates": "120.104000,30.223000", "coordinate_system": "GCJ-02"}, "to_anchor": {"name": "龙井村返程上车点", "physical_address": "浙江省杭州市西湖区龙井路龙井村公交站上客点", "coordinates": "120.104000,30.223000", "coordinate_system": "GCJ-02"}, "mode": "walking", "routing_policy": "shortest_time", "departure_at": "2026-10-18T12:10:00+08:00", "distance_meters": 0, "duration_minutes": 0, "door_to_door_minutes": 16, "map_url": "https://uri.amap.com/navigation?from=120.104000,30.223000&to=120.104000,30.223000&mode=walk", "checked_at": "2026-09-20", "source_ids": ["s-restaurant-map"]},
+      {"id": "baseline-m3", "meal_id": "m3", "from_anchor": {"name": "龙井村步行路线中点", "physical_address": "浙江省杭州市西湖区龙井村公共步道中段", "coordinates": "120.104000,30.223000", "coordinate_system": "GCJ-02"}, "to_anchor": {"name": "龙井村返程步道入口", "physical_address": "浙江省杭州市西湖区龙井村公共步道返程入口", "coordinates": "120.104000,30.223000", "coordinate_system": "GCJ-02"}, "mode": "walking", "routing_policy": "shortest_time", "departure_at": "2026-10-18T10:35:00+08:00", "distance_meters": 0, "duration_minutes": 0, "door_to_door_minutes": 5, "map_url": "https://uri.amap.com/navigation?from=120.104000,30.223000&to=120.104000,30.223000&mode=walk", "checked_at": "2026-09-20", "source_ids": ["s-restaurant-map"]}
     ],
     "meal_route_evaluations": [
-      {"id": "eval-m1-a", "meal_id": "m1", "restaurant_id": "restaurant-lingyin-a", "baseline_route_id": "baseline-m1", "comparison_basis": {"mode": "walking", "routing_policy": "shortest_time", "departure_at": "2026-10-17T12:10:00+08:00"}, "from_previous": {"route_id": "route-m1-a-in", "origin": {"name": "灵隐片区上一站出口", "coordinates": "120.100000,30.240000"}, "destination": {"name": "灵隐杭帮面馆 A", "coordinates": "120.102000,30.240000"}, "distance_meters": 420, "duration_minutes": 6, "door_to_door_minutes": 9, "map_url": "https://uri.amap.com/navigation?from=120.10,30.24&to=120.102,30.24&mode=walk"}, "to_next": {"route_id": "route-m1-a-out", "origin": {"name": "灵隐杭帮面馆 A", "coordinates": "120.102000,30.240000"}, "destination": {"name": "下午路线入口", "coordinates": "120.110000,30.240000"}, "distance_meters": 680, "duration_minutes": 10, "door_to_door_minutes": 13, "map_url": "https://uri.amap.com/navigation?from=120.102,30.24&to=120.11,30.24&mode=walk"}, "total_door_to_door_minutes": 22, "baseline_door_to_door_minutes": 18, "detour_minutes": 4, "checked_at": "2026-09-20", "source_ids": ["s-restaurant-map"]},
-      {"id": "eval-m1-b", "meal_id": "m1", "restaurant_id": "restaurant-lingyin-b", "baseline_route_id": "baseline-m1", "comparison_basis": {"mode": "walking", "routing_policy": "shortest_time", "departure_at": "2026-10-17T12:10:00+08:00"}, "from_previous": {"route_id": "route-m1-b-in", "origin": {"name": "灵隐片区上一站出口", "coordinates": "120.100000,30.240000"}, "destination": {"name": "灵隐杭帮面馆 B", "coordinates": "120.103000,30.241000"}, "distance_meters": 550, "duration_minutes": 8, "door_to_door_minutes": 11, "map_url": "https://uri.amap.com/navigation?from=120.10,30.24&to=120.103,30.241&mode=walk"}, "to_next": {"route_id": "route-m1-b-out", "origin": {"name": "灵隐杭帮面馆 B", "coordinates": "120.103000,30.241000"}, "destination": {"name": "下午路线入口", "coordinates": "120.110000,30.240000"}, "distance_meters": 620, "duration_minutes": 9, "door_to_door_minutes": 12, "map_url": "https://uri.amap.com/navigation?from=120.103,30.241&to=120.11,30.24&mode=walk"}, "total_door_to_door_minutes": 23, "baseline_door_to_door_minutes": 18, "detour_minutes": 5, "checked_at": "2026-09-20", "source_ids": ["s-restaurant-map"]},
-      {"id": "eval-m2-a", "meal_id": "m2", "restaurant_id": "restaurant-longjing-a", "baseline_route_id": "baseline-m2", "comparison_basis": {"mode": "walking", "routing_policy": "shortest_time", "departure_at": "2026-10-18T12:10:00+08:00"}, "from_previous": {"route_id": "route-m2-a-in", "origin": {"name": "龙井村徒步出口", "coordinates": "120.104000,30.223000"}, "destination": {"name": "龙井村农家菜 A", "coordinates": "120.103500,30.223500"}, "distance_meters": 300, "duration_minutes": 5, "door_to_door_minutes": 8, "map_url": "https://uri.amap.com/navigation?from=120.104,30.223&to=120.1035,30.2235&mode=walk"}, "to_next": {"route_id": "route-m2-a-out", "origin": {"name": "龙井村农家菜 A", "coordinates": "120.103500,30.223500"}, "destination": {"name": "龙井村返程上车点", "coordinates": "120.104000,30.223000"}, "distance_meters": 500, "duration_minutes": 8, "door_to_door_minutes": 11, "map_url": "https://uri.amap.com/navigation?from=120.1035,30.2235&to=120.104,30.223&mode=walk"}, "total_door_to_door_minutes": 19, "baseline_door_to_door_minutes": 16, "detour_minutes": 3, "checked_at": "2026-09-20", "source_ids": ["s-restaurant-map"]},
-      {"id": "eval-m2-b", "meal_id": "m2", "restaurant_id": "restaurant-longjing-b", "baseline_route_id": "baseline-m2", "comparison_basis": {"mode": "walking", "routing_policy": "shortest_time", "departure_at": "2026-10-18T12:10:00+08:00"}, "from_previous": {"route_id": "route-m2-b-in", "origin": {"name": "龙井村徒步出口", "coordinates": "120.104000,30.223000"}, "destination": {"name": "龙井村农家菜 B", "coordinates": "120.104500,30.224000"}, "distance_meters": 420, "duration_minutes": 7, "door_to_door_minutes": 10, "map_url": "https://uri.amap.com/navigation?from=120.104,30.223&to=120.1045,30.224&mode=walk"}, "to_next": {"route_id": "route-m2-b-out", "origin": {"name": "龙井村农家菜 B", "coordinates": "120.104500,30.224000"}, "destination": {"name": "龙井村返程上车点", "coordinates": "120.104000,30.223000"}, "distance_meters": 420, "duration_minutes": 7, "door_to_door_minutes": 10, "map_url": "https://uri.amap.com/navigation?from=120.1045,30.224&to=120.104,30.223&mode=walk"}, "total_door_to_door_minutes": 20, "baseline_door_to_door_minutes": 16, "detour_minutes": 4, "checked_at": "2026-09-20", "source_ids": ["s-restaurant-map"]},
-      {"id": "eval-m3-tea", "meal_id": "m3", "restaurant_id": "restaurant-longjing-tea", "baseline_route_id": "baseline-m3", "comparison_basis": {"mode": "walking", "routing_policy": "shortest_time", "departure_at": "2026-10-18T10:35:00+08:00"}, "from_previous": {"route_id": "route-m3-tea-in", "origin": {"name": "龙井村步行路线中点", "coordinates": "120.104000,30.223000"}, "destination": {"name": "龙井村茶歇点", "coordinates": "120.104000,30.223800"}, "distance_meters": 80, "duration_minutes": 2, "door_to_door_minutes": 3, "map_url": "https://uri.amap.com/navigation?from=120.104,30.223&to=120.104,30.2238&mode=walk"}, "to_next": {"route_id": "route-m3-tea-out", "origin": {"name": "龙井村茶歇点", "coordinates": "120.104000,30.223800"}, "destination": {"name": "龙井村返程方向", "coordinates": "120.104000,30.223000"}, "distance_meters": 90, "duration_minutes": 2, "door_to_door_minutes": 3, "map_url": "https://uri.amap.com/navigation?from=120.104,30.2238&to=120.104,30.223&mode=walk"}, "total_door_to_door_minutes": 6, "baseline_door_to_door_minutes": 5, "detour_minutes": 1, "checked_at": "2026-09-20", "source_ids": ["s-restaurant-map"]}
+      {"id": "eval-m1-a", "meal_id": "m1", "restaurant_id": "restaurant-lingyin-a", "baseline_route_id": "baseline-m1", "comparison_basis": {"mode": "walking", "routing_policy": "shortest_time", "departure_at": "2026-10-17T12:10:00+08:00"}, "from_previous": {"route_id": "route-m1-a-in", "origin": {"name": "灵隐片区上一站出口", "physical_address": "浙江省杭州市西湖区灵隐路灵隐片区公交站出口", "coordinates": "120.100000,30.240000"}, "destination": {"name": "灵隐杭帮面馆 A", "physical_address": "浙江省杭州市西湖区灵隐路88号A座", "coordinates": "120.102000,30.240000"}, "distance_meters": 420, "duration_minutes": 6, "door_to_door_minutes": 9, "map_url": "https://uri.amap.com/navigation?from=120.10,30.24&to=120.102,30.24&mode=walk"}, "to_next": {"route_id": "route-m1-a-out", "origin": {"name": "灵隐杭帮面馆 A", "physical_address": "浙江省杭州市西湖区灵隐路88号A座", "coordinates": "120.102000,30.240000"}, "destination": {"name": "下午路线入口", "physical_address": "浙江省杭州市西湖区灵隐路117号下午路线入口", "coordinates": "120.110000,30.240000"}, "distance_meters": 680, "duration_minutes": 10, "door_to_door_minutes": 13, "map_url": "https://uri.amap.com/navigation?from=120.102,30.24&to=120.11,30.24&mode=walk"}, "total_door_to_door_minutes": 22, "baseline_door_to_door_minutes": 18, "detour_minutes": 4, "checked_at": "2026-09-20", "source_ids": ["s-restaurant-map"]},
+      {"id": "eval-m1-b", "meal_id": "m1", "restaurant_id": "restaurant-lingyin-b", "baseline_route_id": "baseline-m1", "comparison_basis": {"mode": "walking", "routing_policy": "shortest_time", "departure_at": "2026-10-17T12:10:00+08:00"}, "from_previous": {"route_id": "route-m1-b-in", "origin": {"name": "灵隐片区上一站出口", "physical_address": "浙江省杭州市西湖区灵隐路灵隐片区公交站出口", "coordinates": "120.100000,30.240000"}, "destination": {"name": "灵隐杭帮面馆 B", "physical_address": "浙江省杭州市西湖区灵隐路96号B座", "coordinates": "120.103000,30.241000"}, "distance_meters": 550, "duration_minutes": 8, "door_to_door_minutes": 11, "map_url": "https://uri.amap.com/navigation?from=120.10,30.24&to=120.103,30.241&mode=walk"}, "to_next": {"route_id": "route-m1-b-out", "origin": {"name": "灵隐杭帮面馆 B", "physical_address": "浙江省杭州市西湖区灵隐路96号B座", "coordinates": "120.103000,30.241000"}, "destination": {"name": "下午路线入口", "physical_address": "浙江省杭州市西湖区灵隐路117号下午路线入口", "coordinates": "120.110000,30.240000"}, "distance_meters": 620, "duration_minutes": 9, "door_to_door_minutes": 12, "map_url": "https://uri.amap.com/navigation?from=120.103,30.241&to=120.11,30.24&mode=walk"}, "total_door_to_door_minutes": 23, "baseline_door_to_door_minutes": 18, "detour_minutes": 5, "checked_at": "2026-09-20", "source_ids": ["s-restaurant-map"]},
+      {"id": "eval-m2-a", "meal_id": "m2", "restaurant_id": "restaurant-longjing-a", "baseline_route_id": "baseline-m2", "comparison_basis": {"mode": "walking", "routing_policy": "shortest_time", "departure_at": "2026-10-18T12:10:00+08:00"}, "from_previous": {"route_id": "route-m2-a-in", "origin": {"name": "龙井村徒步出口", "physical_address": "浙江省杭州市西湖区龙井路龙井村公共步道出口", "coordinates": "120.104000,30.223000"}, "destination": {"name": "龙井村农家菜 A", "physical_address": "浙江省杭州市西湖区龙井村88号", "coordinates": "120.103500,30.223500"}, "distance_meters": 300, "duration_minutes": 5, "door_to_door_minutes": 8, "map_url": "https://uri.amap.com/navigation?from=120.104,30.223&to=120.1035,30.2235&mode=walk"}, "to_next": {"route_id": "route-m2-a-out", "origin": {"name": "龙井村农家菜 A", "physical_address": "浙江省杭州市西湖区龙井村88号", "coordinates": "120.103500,30.223500"}, "destination": {"name": "龙井村返程上车点", "physical_address": "浙江省杭州市西湖区龙井路龙井村公交站上客点", "coordinates": "120.104000,30.223000"}, "distance_meters": 500, "duration_minutes": 8, "door_to_door_minutes": 11, "map_url": "https://uri.amap.com/navigation?from=120.1035,30.2235&to=120.104,30.223&mode=walk"}, "total_door_to_door_minutes": 19, "baseline_door_to_door_minutes": 16, "detour_minutes": 3, "checked_at": "2026-09-20", "source_ids": ["s-restaurant-map"]},
+      {"id": "eval-m2-b", "meal_id": "m2", "restaurant_id": "restaurant-longjing-b", "baseline_route_id": "baseline-m2", "comparison_basis": {"mode": "walking", "routing_policy": "shortest_time", "departure_at": "2026-10-18T12:10:00+08:00"}, "from_previous": {"route_id": "route-m2-b-in", "origin": {"name": "龙井村徒步出口", "physical_address": "浙江省杭州市西湖区龙井路龙井村公共步道出口", "coordinates": "120.104000,30.223000"}, "destination": {"name": "龙井村农家菜 B", "physical_address": "浙江省杭州市西湖区龙井村102号", "coordinates": "120.104500,30.224000"}, "distance_meters": 420, "duration_minutes": 7, "door_to_door_minutes": 10, "map_url": "https://uri.amap.com/navigation?from=120.104,30.223&to=120.1045,30.224&mode=walk"}, "to_next": {"route_id": "route-m2-b-out", "origin": {"name": "龙井村农家菜 B", "physical_address": "浙江省杭州市西湖区龙井村102号", "coordinates": "120.104500,30.224000"}, "destination": {"name": "龙井村返程上车点", "physical_address": "浙江省杭州市西湖区龙井路龙井村公交站上客点", "coordinates": "120.104000,30.223000"}, "distance_meters": 420, "duration_minutes": 7, "door_to_door_minutes": 10, "map_url": "https://uri.amap.com/navigation?from=120.1045,30.224&to=120.104,30.223&mode=walk"}, "total_door_to_door_minutes": 20, "baseline_door_to_door_minutes": 16, "detour_minutes": 4, "checked_at": "2026-09-20", "source_ids": ["s-restaurant-map"]},
+      {"id": "eval-m3-tea", "meal_id": "m3", "restaurant_id": "restaurant-longjing-tea", "baseline_route_id": "baseline-m3", "comparison_basis": {"mode": "walking", "routing_policy": "shortest_time", "departure_at": "2026-10-18T10:35:00+08:00"}, "from_previous": {"route_id": "route-m3-tea-in", "origin": {"name": "龙井村步行路线中点", "physical_address": "浙江省杭州市西湖区龙井村公共步道中段", "coordinates": "120.104000,30.223000"}, "destination": {"name": "龙井村茶歇点", "physical_address": "浙江省杭州市西湖区龙井村88-1号", "coordinates": "120.104000,30.223800"}, "distance_meters": 80, "duration_minutes": 2, "door_to_door_minutes": 3, "map_url": "https://uri.amap.com/navigation?from=120.104,30.223&to=120.104,30.2238&mode=walk"}, "to_next": {"route_id": "route-m3-tea-out", "origin": {"name": "龙井村茶歇点", "physical_address": "浙江省杭州市西湖区龙井村88-1号", "coordinates": "120.104000,30.223800"}, "destination": {"name": "龙井村返程步道入口", "physical_address": "浙江省杭州市西湖区龙井村公共步道返程入口", "coordinates": "120.104000,30.223000"}, "distance_meters": 90, "duration_minutes": 2, "door_to_door_minutes": 3, "map_url": "https://uri.amap.com/navigation?from=120.104,30.2238&to=120.104,30.223&mode=walk"}, "total_door_to_door_minutes": 6, "baseline_door_to_door_minutes": 5, "detour_minutes": 1, "checked_at": "2026-09-20", "source_ids": ["s-restaurant-map"]}
     ],
     "meal_options": [
       {
@@ -189,16 +216,9 @@
         "meal_type": "午餐",
         "research_status": "complete",
         "name": "灵隐片区顺路午餐",
-        "location": "灵隐公交站至景区入口步行范围内",
         "time_window": "12:10–13:10",
-        "signature_dishes": ["片儿川", "小笼"],
-        "per_person": "约 ¥60–120（估算）",
-        "opening_hours": "午市营业时间需在出发前复核",
-        "queue_note": "周末 12:00 后可能排队，超过 20 分钟改用备选",
-        "why_here": "位于上午路线终点，不为用餐折返",
-        "fallback": "公交站附近选择即时有座的杭帮面馆",
-        "previous_anchor": {"name": "灵隐片区上一站出口", "coordinates": "120.100000,30.240000"},
-        "next_anchor": {"name": "下午路线入口", "coordinates": "120.110000,30.240000"},
+        "previous_anchor": {"name": "灵隐片区上一站出口", "physical_address": "浙江省杭州市西湖区灵隐路灵隐片区公交站出口", "coordinates": "120.100000,30.240000"},
+        "next_anchor": {"name": "下午路线入口", "physical_address": "浙江省杭州市西湖区灵隐路117号下午路线入口", "coordinates": "120.110000,30.240000"},
         "constraints": {"max_detour_minutes": 15, "max_queue_minutes": 20, "budget_per_person": "¥60–120"},
         "baseline_route_id": "baseline-m1",
         "candidate_ids": ["restaurant-lingyin-a", "restaurant-lingyin-b"],
@@ -221,16 +241,9 @@
         "meal_type": "午餐",
         "research_status": "complete",
         "name": "龙井村轻午餐",
-        "location": "龙井村公交站附近公共道路沿线",
         "time_window": "12:10–13:10",
-        "signature_dishes": ["茶香鸡", "时蔬", "米饭"],
-        "per_person": "约 ¥70–130（估算）",
-        "opening_hours": "午市营业时间需在出发前复核",
-        "queue_note": "不等网红店；满座即换备选",
-        "why_here": "结束徒步后就近补给，再回酒店取行李",
-        "fallback": "返回龙翔桥酒店片区后用餐",
-        "previous_anchor": {"name": "龙井村徒步出口", "coordinates": "120.104000,30.223000"},
-        "next_anchor": {"name": "龙井村返程上车点", "coordinates": "120.104000,30.223000"},
+        "previous_anchor": {"name": "龙井村徒步出口", "physical_address": "浙江省杭州市西湖区龙井路龙井村公共步道出口", "coordinates": "120.104000,30.223000"},
+        "next_anchor": {"name": "龙井村返程上车点", "physical_address": "浙江省杭州市西湖区龙井路龙井村公交站上客点", "coordinates": "120.104000,30.223000"},
         "constraints": {"max_detour_minutes": 15, "max_queue_minutes": 20, "budget_per_person": "¥70–130"},
         "baseline_route_id": "baseline-m2",
         "candidate_ids": ["restaurant-longjing-a", "restaurant-longjing-b"],
@@ -251,16 +264,9 @@
         "meal_type": "茶歇",
         "research_status": "complete",
         "name": "龙井村途中茶歇",
-        "location": "龙井村公共道路沿线、靠近返程方向的正规经营场所",
         "time_window": "10:35–10:55",
-        "signature_dishes": ["龙井茶", "桂花糕"],
-        "per_person": "约 ¥30–60（估算）",
-        "opening_hours": "以当天店铺公示为准",
-        "queue_note": "只选即时有座的店，最多停留 20 分钟",
-        "why_here": "放在徒步折返点，不额外绕路",
-        "fallback": "自带水和能量棒，直接继续返程",
-        "previous_anchor": {"name": "龙井村步行路线中点", "coordinates": "120.104000,30.223000"},
-        "next_anchor": {"name": "龙井村返程方向", "coordinates": "120.104000,30.223000"},
+        "previous_anchor": {"name": "龙井村步行路线中点", "physical_address": "浙江省杭州市西湖区龙井村公共步道中段", "coordinates": "120.104000,30.223000"},
+        "next_anchor": {"name": "龙井村返程步道入口", "physical_address": "浙江省杭州市西湖区龙井村公共步道返程入口", "coordinates": "120.104000,30.223000"},
         "constraints": {"max_detour_minutes": 5, "max_queue_minutes": 0, "budget_per_person": "¥30–60"},
         "baseline_route_id": "baseline-m3",
         "candidate_ids": ["restaurant-longjing-tea"],

@@ -213,7 +213,7 @@ def init_workspace(args: argparse.Namespace) -> dict[str, Any]:
         "created_at": now(),
         "phase": "route_proposal",
         "write_ownership": {
-            "main_agent": ["manifest.json", "brief.json", "route-proposals.json", "selected-route.json", "state/", "artifacts/", "evidence/main/"],
+            "main_agent": ["manifest.json", "brief.json", "route-context.json", "route-proposals.json", "selected-route.json", "state/", "artifacts/", "evidence/main/"],
             "task_agent": ["results/<task_id>.json", "sources/<task_id>.jsonl", "snapshots/<task_id>/", "evidence/<task_id>/"],
         },
         "sensitive_data_policy": "不写入 API Key、Cookie、账号密码、身份证件或支付信息",
@@ -221,6 +221,15 @@ def init_workspace(args: argparse.Namespace) -> dict[str, Any]:
     }
     write_json(workspace / "manifest.json", manifest)
     write_json(workspace / "brief.json", brief)
+    write_json(workspace / "route-context.json", {
+        "status": "pending",
+        "queries": [],
+        "checked_at": None,
+        "route_signals": [],
+        "food_themes": [],
+        "conflicts": [],
+        "references": [],
+    })
     write_json(workspace / "route-proposals.json", [])
     return {"status": "created", "workspace": str(workspace), "trip_id": trip_id}
 
@@ -287,7 +296,7 @@ def assign(args: argparse.Namespace) -> dict[str, Any]:
         raise WorkspaceError("meal_route_evaluation 必须依赖 restaurant_discovery")
     if stage == "restaurant_ranking" and not {"restaurant_discovery", "meal_route_evaluation"}.issubset(dependency_stages):
         raise WorkspaceError("restaurant_ranking 必须同时依赖 restaurant_discovery 和 meal_route_evaluation")
-    read_first = ["manifest.json", "brief.json"]
+    read_first = ["manifest.json", "brief.json", "route-context.json"]
     if args.domain != "route_proposal":
         read_first.append("selected-route.json")
     dependency_paths = [f"results/{dependency}.json" for dependency in dependencies]
@@ -326,6 +335,7 @@ def assign(args: argparse.Namespace) -> dict[str, Any]:
         "forbidden_paths": [
             "manifest.json",
             "brief.json",
+            "route-context.json",
             "selected-route.json",
             "state/",
             "artifacts/",
@@ -629,8 +639,8 @@ def validate_stage_result(workspace: Path, assignment: dict[str, Any], result: d
                 raise WorkspaceError("restaurant_discovery 每个餐窗必须给出数值 max_detour_minutes")
             for anchor_name in ("previous_anchor", "next_anchor"):
                 anchor = meal.get(anchor_name) or {}
-                if not anchor.get("name") or not anchor.get("coordinates"):
-                    raise WorkspaceError("restaurant_discovery 每个餐窗必须提供可定位的前后锚点")
+                if not all(anchor.get(field) for field in ("name", "physical_address", "coordinates")):
+                    raise WorkspaceError("restaurant_discovery 每个餐窗必须提供含名称、具体地址和坐标的前后锚点")
         if entities.get("meal_options"):
             raise WorkspaceError("restaurant_discovery 不得提前输出最终 meal_options 排名")
 
@@ -656,7 +666,10 @@ def validate_stage_result(workspace: Path, assignment: dict[str, Any], result: d
             required_baseline = {"id", "from_anchor", "to_anchor", "mode", "routing_policy", "departure_at", "door_to_door_minutes", "map_url", "checked_at", "source_ids"}
             if any(baseline.get(field) in (None, "", []) for field in required_baseline):
                 raise WorkspaceError("route-data-meals 的 baseline route 缺少锚点、口径、时间、地图或来源")
-            if any((baseline.get(side) or {}).get("coordinates") != (meal.get(anchor) or {}).get("coordinates") for side, anchor in (("from_anchor", "previous_anchor"), ("to_anchor", "next_anchor"))):
+            if any(
+                any((baseline.get(side) or {}).get(field) != (meal.get(anchor) or {}).get(field) for field in ("name", "physical_address", "coordinates"))
+                for side, anchor in (("from_anchor", "previous_anchor"), ("to_anchor", "next_anchor"))
+            ):
                 raise WorkspaceError("route-data-meals 的 baseline route 锚点与 discovery 餐窗不一致")
             evaluation = next(item for item in evaluations if str(item.get("meal_id") or "") == meal_id and str(item.get("restaurant_id") or "") == restaurant_id)
             if evaluation.get("baseline_route_id") != baseline.get("id"):
@@ -664,17 +677,22 @@ def validate_stage_result(workspace: Path, assignment: dict[str, Any], result: d
             basis = evaluation.get("comparison_basis") or {}
             if any(basis.get(field) != baseline.get(field) for field in ("mode", "routing_policy", "departure_at")):
                 raise WorkspaceError("route-data-meals 的候选路线与 baseline 比较口径不一致")
-            restaurant_coordinates = ((restaurants.get(restaurant_id) or {}).get("location") or {}).get("coordinates")
+            restaurant = restaurants.get(restaurant_id) or {}
+            restaurant_location = restaurant.get("location") or {}
             expected_ends = (
-                ("from_previous", (meal.get("previous_anchor") or {}).get("coordinates"), restaurant_coordinates),
-                ("to_next", restaurant_coordinates, (meal.get("next_anchor") or {}).get("coordinates")),
+                ("from_previous", meal.get("previous_anchor") or {}, {"name": restaurant.get("name"), **restaurant_location}),
+                ("to_next", {"name": restaurant.get("name"), **restaurant_location}, meal.get("next_anchor") or {}),
             )
             for leg_name, origin, destination in expected_ends:
                 leg = evaluation.get(leg_name) or {}
                 required_leg = {"route_id", "origin", "destination", "distance_meters", "duration_minutes", "door_to_door_minutes", "map_url"}
                 if any(leg.get(field) in (None, "", []) for field in required_leg):
                     raise WorkspaceError("route-data-meals 的候选双腿路线缺少端点、耗时或地图链接")
-                if (leg.get("origin") or {}).get("coordinates") != origin or (leg.get("destination") or {}).get("coordinates") != destination:
+                route_origin = leg.get("origin") or {}
+                route_destination = leg.get("destination") or {}
+                if any(not endpoint.get(field) for endpoint in (route_origin, route_destination) for field in ("name", "physical_address", "coordinates")):
+                    raise WorkspaceError("route-data-meals 的候选双腿端点必须提供名称、具体地址和坐标")
+                if any(route_origin.get(field) != origin.get(field) or route_destination.get(field) != destination.get(field) for field in ("name", "physical_address", "coordinates")):
                     raise WorkspaceError("route-data-meals 的候选双腿端点没有构成上一锚点到餐厅再到下一锚点")
             try:
                 total = float(evaluation["from_previous"]["door_to_door_minutes"]) + float(evaluation["to_next"]["door_to_door_minutes"])

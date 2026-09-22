@@ -263,10 +263,19 @@ class ResearchWorkspaceTest(unittest.TestCase):
         self.assertIn("snapshots/weather/", assigned["owned_paths"])
         self.assertIn("artifacts/", assigned["forbidden_paths"])
         self.assertIn("assignments/weather.json", assigned["input_paths"])
-        self.assertEqual(assigned["read_first"], ["manifest.json", "brief.json", "selected-route.json"])
+        self.assertEqual(assigned["read_first"], ["manifest.json", "brief.json", "route-context.json", "selected-route.json"])
+        self.assertIn("route-context.json", assigned["forbidden_paths"])
         self.assertTrue(assigned["result_template"].endswith("weather.result-template.json"))
         self.assertIn("shared_entities", assigned["shared_state_policy"])
         self.assertEqual(len(assigned["input_revision"]), 64)
+
+    def test_workspace_initializes_route_context_for_bounded_community_research(self) -> None:
+        context = json.loads((self.workspace / "route-context.json").read_text(encoding="utf-8"))
+        self.assertEqual(context["status"], "pending")
+        self.assertEqual(context["route_signals"], [])
+        self.assertEqual(context["food_themes"], [])
+        manifest = json.loads((self.workspace / "manifest.json").read_text(encoding="utf-8"))
+        self.assertIn("route-context.json", manifest["write_ownership"]["main_agent"])
 
     def test_provider_snapshot_is_stored_bound_submitted_and_merged(self) -> None:
         assignment = research_workspace.assign(

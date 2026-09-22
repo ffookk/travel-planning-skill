@@ -21,6 +21,7 @@
     "readiness": [],
     "attractions": [],
     "transport_edges": [],
+    "daily_routes": [],
     "intercity_options": [],
     "lodging_options": [],
     "restaurants": [],
@@ -48,6 +49,7 @@
 - 日期尽量使用 ISO 格式；事件时间使用目的地当地时间。跨时区航班同时保存当地出发、到达日期和时区。
 - 事件类型只允许 `attraction`、`transport`、`meal`、`lodging`、`rest` 或 `note`。
 - `details`、`tips`、`images`、`sources` 及其他展示元数据为可选字段，不得代替结构化执行字段。
+- `planning.daily_routes[]` 每个日期最多一条，包含 `id`、`date`、`title`、`mode` 和按执行顺序排列的 `stops[]`。每站至少有 `name`、GCJ-02 `coordinates`，应通过 `event_id` 绑定当天事件；有高德 POI ID 时保留 `poi_id`。首末站分别成为高德 `from`/`to`，中间最多16站依次成为 `via[n]`。完整旅行日必须覆盖住宿出发点、所有实际景点、主选正餐及当晚住宿或结束点，不能只复制 `transport` 事件。
 
 ## 来源、快照与动态状态
 
@@ -68,9 +70,10 @@
 
 - 进入日程的景点事件通过 `attraction_id` 引用景点记录。`best_time` 给出明确时段，`best_time_reason` 写出季节、光线、客流、演出、开放时间或返程交通等实际依据。
 - 景点事件提供结构化 `admission`，分别记录 `opening_hours`、`last_entry`、`reservation_method`、`entry_requirement` 和 `notice`。景点实体分别保存 `official.physical_address`、`official.homepage_url`、`official.notice_url` 与 `official.checked_at`；需要预约时增加 `official.booking_url`，无需预约且无购票页时写 `official.booking_status=not_applicable`。
-- 景点事件提供 `execution.entry`、`execution.exit` 和 `execution.checkpoints[]`。入口包含名称、导航定位词与选择理由；出口包含名称和定位词。
+- 官方预约主要在微信公众号完成时，可增加 `official.wechat`，其中 `account_name`、`menu_path`、`checked_at` 必填，已核验到官方预约说明文章时再提供 `guide_url`。`guide_url` 只接受 `https://mp.weixin.qq.com`；未取得文章入口时页面提供复制公众号名称的降级动作，不猜测公众号主页、不生成二维码。
+- 景点事件提供 `execution.entry`、`execution.exit` 和 `execution.checkpoints[]`。入口包含名称、导航定位词与选择理由；出口包含名称和定位词。二者作为路线计算的独立锚点保留，页面分别把它们投影到首、末 checkpoint，不另起展示区。
 - 每个 checkpoint 至少包含 `id`、`order`、`time`、`end_time`、`kind`、`name`、`required` 和 `instruction`；按需要增加讲解、图片、上一节点移动、`meal_id`、内部交通、链接和失败备选。`kind` 使用 `entry`、`ticket_check`、`visit`、`experience`、`internal_transport`、`meal`、`rest`、`photo` 或 `exit`。
-- `visit_order` 只用于旧数据摘要，不能代替 checkpoints。现场动作、避坑和天气备选写入对应 checkpoint；出发前必须完成的装备或证件要求写入 `preparation[]`。
+- `visit_order` 只用于旧数据摘要，不能代替 checkpoints。现场动作、避坑和天气备选写入对应 checkpoint；`narration` 只在该节点确有研究到的看点或讲解时填写，不得用全局默认句补齐。出发前必须完成的装备或证件要求写入 `preparation[]`。
 - 景点事件通过 `weather_id` 引用 `planning.weather[]`。天气对象包含固定 `icon_code`、摘要、状态、查询时间和 `type=weather` 的入口；会改变动作的影响写入 checkpoint 备选。
 - `icon_code` 使用 `clear_day`、`clear_night`、`partly_cloudy`、`cloudy`、`fog`、`drizzle`、`rain`、`heavy_rain`、`snow`、`thunderstorm`、`wind`、`dust`、`warning` 或 `unknown`。
 - `reservation_required=true` 时提供 `booking_task_ids[]`。对应 booking task 用 `event_id` 和 `attraction_id` 双重绑定，并包含目标日期或场次、人数、产品、状态、放票时间或规则、下一动作、截止时间和官方入口。
@@ -99,14 +102,16 @@
 ## 餐饮与路线适配
 
 - 餐饮事件通过 `meal_id` 引用 `meal_options[]`。餐厅研究遵守[餐厅候选研究与路线适配](restaurant-research.md)：`restaurants[]` 保存稳定身份，`restaurant_snapshots[]` 保存本次动态覆盖，`meal_baseline_routes[]` 保存每餐唯一基准，`meal_route_evaluations[]` 保存逐候选双腿路线和额外绕行。
-- 正常正餐的 `meal_options[]` 包含 2～3 个真实去重的 `candidate_ids[]`、`selected_candidate_id`、至少一个 `fallback_candidate_ids[]`、逐候选 `snapshot_id` 和 `route_evaluation_id`、`baseline_route_id`、前后锚点、数值型最大绕行、选择理由与切换规则。
+- 正常正餐的 `meal_options[]` 包含 2～3 个真实去重的 `candidate_ids[]`、`selected_candidate_id`、至少一个 `fallback_candidate_ids[]`、逐候选 `snapshot_id` 和 `route_evaluation_id`、`baseline_route_id`、前后锚点、数值型最大绕行、选择理由与切换规则。前后锚点及双腿路线的每个端点都必须提供明确名称、具体地址和坐标；页面据此展示真实“地点 A → 地点 B”，不得退化成“上一站/下一站”。
+- `meal_options[]` 只保存餐窗和跨候选决策，不产出 `location`、`signature_dishes`、`per_person`、`opening_hours`、`queue_note`、`why_here` 或自由文本 `fallback`。地址与特色菜读取 `restaurants[]`，人均与营业读取 `restaurant_snapshots[]`，顺路依据读取 `meal_route_evaluations[]`，备选读取 `fallback_candidate_ids[]` 与 `fallback_rule`，避免主选切换后出现两套冲突数据。
 - 受限场景少于两个候选时使用 `candidate_policy.status=constrained`，提供有来源的限制原因与应急补给。
-- 餐厅评分按平台分开，带量表、评价量、查询时间和来源；不得把平台评分与社区互动数合成一个分数。动态快照遵守 `schemas/restaurant-source-snapshot.schema.json`。
+- 餐厅评分按平台分开，带量表、查询时间和来源；平台返回评价量时一并保存，未返回时使用 `review_count=null` 并在页面明确“评价量未取得”，不把评分展示值整体丢弃。不得把缺少评价量的展示值称为“口碑最佳”，也不得把平台评分与社区互动数合成一个分数。动态快照遵守 `schemas/restaurant-source-snapshot.schema.json`。
+- 高德餐厅实体使用 `location.poi_provider=amap` 和已核验 `poi_id`。渲染器据此生成高德门店详情与到店导航 URI；`selected_candidate_id` 仍表示系统推荐，页面内用户选择不回写此字段。
 - 每个候选至少提供一项合法可视证据：可展示图片包含作者或机构、许可和原始页面；否则使用 `kind=link_preview` 的官方相册、地图详情或社区原帖，不复制或热链临时社区图片。
 
 ## 链接与图片
 
-- `action_links[].type` 使用 `map`、`official`、`official_homepage`、`official_notice`、`official_booking`、`weather`、`weather_warning`、`ticket`、`train`、`bus`、`hotel`、`restaurant`、`guide`、`image_source` 或 `source`。
+- `action_links[].type` 使用 `map`、`official`、`official_homepage`、`official_notice`、`official_booking`、`official_wechat`、`weather`、`weather_warning`、`ticket`、`train`、`bus`、`hotel`、`restaurant`、`guide`、`image_source` 或 `source`。
 - 操作链接使用 HTTPS，包含平台名和适用提示；不得自行拼接购买详情链接。
 - 图片替代文本准确描述内容，不直接使用文件名。checkpoint 图片还要包含作者或机构、许可、`source_url` 和查询时间，且主题对应当前节点。
 - 大尺寸照片不得使用 Data URL，以免页面无法分享。

@@ -14,6 +14,14 @@
 
 地点名称可能重名。搜索结果用于发现候选，采用前应以 POI ID、地址和城市确认实体；路线端点使用确认后的坐标。
 
+### 附近餐厅
+
+1. 用已核验用餐锚点的 GCJ-02 坐标调用 `maps_around_search(location, keywords, radius)`；`keywords` 可使用“餐厅”或具体菜系。
+2. 周边结果只作为候选池。对保留候选调用 `maps_search_detail(id)`，取得精确坐标、地址、营业、人均和平台展示评分。
+3. 当前 MCP 周边工具未暴露 `sortrule`，不得根据返回顺序声称“评分最高”或“高德官方推荐”。路线排序由调用方基于逐候选路线结果计算。
+4. 详情可能缺少评价量和评论正文。评分可展示为“高德评分 X，评价量未取得”，但不能据此形成口碑最佳结论。
+5. 已核验 POI 可生成 `https://uri.amap.com/poidetail?poiid=<POI_ID>&src=travel-planning&callnative=1`；有坐标时再生成 `https://uri.amap.com/navigation` 到店入口。URI API 参数必须来自本次核验结果。
+
 ## 路线与距离
 
 | 意图 | 工具 | 必填参数 |

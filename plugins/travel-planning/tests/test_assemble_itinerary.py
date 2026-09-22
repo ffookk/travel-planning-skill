@@ -95,7 +95,39 @@ class AssembleItineraryTest(unittest.TestCase):
         self.assertEqual(event["execution"]["entry"]["name"], "南门")
         self.assertFalse(event["execution"]["checkpoints"][1]["required"])
         self.assertEqual(event["execution"]["checkpoints"][1]["instruction"], "时间不足可跳过")
+        self.assertNotIn("narration", event["execution"]["checkpoints"][0])
+        self.assertNotIn("narration", event["execution"]["checkpoints"][1])
         self.assertEqual(result["planning"]["booking_tasks"][0]["event_id"], "event-museum")
+
+    def test_keeps_researched_checkpoint_narration(self) -> None:
+        task = json.loads((self.workspace / "results" / "attractions.json").read_text(encoding="utf-8"))
+        task["entities"]["attractions"][0]["checkpoint_blueprint"][0]["narration"] = "观察主展厅入口保留的建筑构件。"
+        write_json(self.workspace / "results" / "attractions.json", task)
+        result = assemble_itinerary.assemble(self.workspace, self.plan_path)
+        checkpoint = result["days"][0]["events"][0]["execution"]["checkpoints"][0]
+        self.assertEqual(checkpoint["narration"], "观察主展厅入口保留的建筑构件。")
+
+    def test_uses_verified_wechat_guide_for_booking_actions(self) -> None:
+        task = json.loads((self.workspace / "results" / "attractions.json").read_text(encoding="utf-8"))
+        attraction = task["entities"]["attractions"][0]
+        attraction["reservation"] = {
+            "required": True,
+            "target_date": "2026-10-03",
+            "action": "在微信公众号内预约",
+        }
+        attraction["official"]["wechat"] = {
+            "account_name": "城市博物馆",
+            "menu_path": "参观服务 → 预约",
+            "guide_url": "https://mp.weixin.qq.com/s/museum-guide",
+            "checked_at": "2026-09-22",
+        }
+        write_json(self.workspace / "results" / "attractions.json", task)
+        result = assemble_itinerary.assemble(self.workspace, self.plan_path)
+        event = result["days"][0]["events"][0]
+        booking = result["planning"]["booking_tasks"][0]
+        self.assertEqual(event["action_links"][0]["url"], "https://mp.weixin.qq.com/s/museum-guide")
+        self.assertEqual(booking["action_links"][0]["type"], "official_wechat")
+        self.assertEqual(booking["action_links"][0]["label"], "打开公众号预约说明")
 
     def test_rejects_plan_after_research_state_changes(self) -> None:
         write_json(self.workspace / "state" / "research.json", {
