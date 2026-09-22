@@ -225,7 +225,9 @@ travel-planning-marketplace/
 
 接收方需要先把 ZIP 解压到持久目录，再按照“快速接入 Codex”中的命令注册该目录并安装 `travel-planning@local`。Codex CLI 接收的是 marketplace 目录，不是 ZIP 文件本身。
 
-打包清单由 Git 规则生成。已跟踪文件和未被忽略的新文件会进入 ZIP；`.gitignore`、`.git/info/exclude` 和全局 Git ignore 命中的文件不会进入产物。因此 `sources.local.env`、研究工作区、浏览器截图和本机缓存不会被分发。
+打包清单由 Git 规则生成。
+
+Tracked files and untracked files allowed by Git ignore rules are candidates for the ZIP. Git ignore rules do not exclude files that are already tracked. Before creating or replacing the archive, packaging independently rejects known private runtime paths, including local credential files, research workspaces, browser state, cookies, token caches, and service logs, even if they were force-added to Git. Unsafe or non-portable symlinks are rejected too; relative links to public resources included in the package remain supported. The `sources.example.env` template remains eligible. This path policy is not a content-complete secret scanner: review the selected files before distribution, including public files that may contain private data.
 
 如需覆盖默认路径：
 

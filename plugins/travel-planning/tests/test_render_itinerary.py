@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import unittest
+from html.parser import HTMLParser
 from pathlib import Path
 
 
@@ -13,6 +14,12 @@ SPEC = importlib.util.spec_from_file_location("render_itinerary", MODULE_PATH)
 assert SPEC and SPEC.loader
 render_itinerary = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(render_itinerary)
+
+ASSEMBLER_PATH = SKILL_ROOT / "scripts" / "assemble_itinerary.py"
+ASSEMBLER_SPEC = importlib.util.spec_from_file_location("assemble_itinerary", ASSEMBLER_PATH)
+assert ASSEMBLER_SPEC and ASSEMBLER_SPEC.loader
+assemble_itinerary = importlib.util.module_from_spec(ASSEMBLER_SPEC)
+ASSEMBLER_SPEC.loader.exec_module(assemble_itinerary)
 
 
 def add_inventory_binding(data: dict, expires_at: str = "2099-01-01T10:30:00+08:00") -> str:
@@ -201,6 +208,150 @@ class RenderItineraryTest(unittest.TestCase):
         ]
         with self.assertRaisesRegex(ValueError, "必须使用 HTTPS"):
             render_itinerary.validate_data(data)
+
+    def test_legacy_itineraries_validate_external_links_without_planning(self) -> None:
+        unsafe_urls = (
+            "javascript:alert(1)",
+            "data:text/html,example",
+            "file:///tmp/example",
+            "http://example.com/",
+            "//example.com/",
+            "https:///missing-host",
+            "https://user:password@example.com/",
+            "https://@example.com/",
+            "https://example.com\\@other.example/",
+            "https://exam\tple.com/",
+            "https://example.com/\npath",
+            "https://example.com/\x00path",
+            "https://example.com/\x7fpath",
+            "https://example.com/\x85path",
+            "https://exa mple.com/",
+            "https://example.com:invalid/",
+            "https://example.com:65536/",
+            "https://[::1]suffix/",
+        )
+        for url in unsafe_urls:
+            for field in ("map_url", "source", "action_links"):
+                for planning in (None, {}):
+                    with self.subTest(url=url, field=field, planning=planning):
+                        event = {"type": "note", "title": "Synthetic stop"}
+                        data = {"trip": {"title": "Synthetic trip"}, "days": [{"events": [event]}]}
+                        if planning is not None:
+                            data["planning"] = planning
+                        if field == "map_url":
+                            event["map_url"] = url
+                        elif field == "source":
+                            data["sources"] = [{"title": "Synthetic source", "url": url}]
+                        else:
+                            event["action_links"] = [{"label": "Synthetic action", "url": url}]
+                        with self.assertRaisesRegex(ValueError, "HTTPS"):
+                            render_itinerary.build(data)
+
+    def test_inventory_snapshot_links_use_the_same_url_policy(self) -> None:
+        for url in ("javascript:alert(1)", "https:///missing-host", "https://user@example.com/"):
+            with self.subTest(url=url):
+                data = self.load_example()
+                add_inventory_binding(data)
+                data["planning"]["source_snapshots"][0]["items"][0]["action_link"] = url
+                with self.assertRaisesRegex(ValueError, "action_link.*HTTPS"):
+                    render_itinerary.build(data)
+
+    def normalized_rail_itinerary(self) -> dict:
+        data = {
+            "trip": {"title": "Synthetic rail trip", "updated_at": "2026-09-22"},
+            "workflow": {"phase": "confirmed_planning", "selected_route_id": "synthetic-route"},
+            "days": [{
+                "date": "2026-10-03",
+                "events": [{
+                    "id": "rail-event", "type": "transport", "route_id": "rail-1",
+                    "title": "Synthetic train journey", "time": "09:00", "end_time": "10:00",
+                }],
+            }],
+        }
+        candidate = assemble_itinerary.normalize_intercity(
+            {"id": "rail-1", "mode": "train", "country_code": "CN", "from": "Origin", "to": "Destination"},
+            assemble_itinerary.default_settings(data),
+        )
+        data["planning"] = {"intercity_options": [candidate]}
+        return data
+
+    def test_assembly_normalized_rail_action_object_remains_valid(self) -> None:
+        data = self.normalized_rail_itinerary()
+        action = data["planning"]["intercity_options"][0]["rail_verification"]["action_link"]
+        self.assertIsInstance(action, dict)
+        self.assertEqual(action["url"], "https://www.12306.cn/")
+        original = json.dumps(data, sort_keys=True)
+
+        self.assertIn("Synthetic train journey", render_itinerary.build(data))
+        self.assertEqual(json.dumps(data, sort_keys=True), original)
+
+    def test_rail_action_objects_do_not_bypass_url_validation(self) -> None:
+        invalid_actions = (
+            "javascript:alert(1)",
+            "https:///missing-host",
+            {"url": "javascript:alert(1)"},
+            {"url": "https://user:password@example.com/"},
+            {"url": "https://example.com/\npath"},
+            {"url": None},
+            {},
+        )
+        for action in invalid_actions:
+            with self.subTest(action=action):
+                data = self.normalized_rail_itinerary()
+                data["planning"]["intercity_options"][0]["rail_verification"]["action_link"] = action
+                with self.assertRaisesRegex(ValueError, "action_link.*HTTPS"):
+                    render_itinerary.build(data)
+
+    def test_valid_urls_keep_queries_and_escape_attribute_characters(self) -> None:
+        class LinkCollector(HTMLParser):
+            def __init__(self) -> None:
+                super().__init__()
+                self.links = []
+
+            def handle_starttag(self, tag, attrs) -> None:
+                if tag == "a":
+                    self.links.append(dict(attrs).get("href"))
+
+        url = 'https://example.com/path?q="<synthetic>"&signature=a%2Fb%3D&xsec_token=synthetic#details'
+        event = {
+            "type": "note", "title": "Synthetic stop", "map_url": url,
+            "action_links": [{"label": "Synthetic action", "url": url}],
+        }
+        data = {
+            "trip": {"title": "Synthetic trip"},
+            "days": [{"events": [event]}],
+            "sources": [{"title": "Synthetic source", "url": url}],
+        }
+        original = json.dumps(data, sort_keys=True)
+        html = render_itinerary.build(data)
+        links = LinkCollector()
+        links.feed(html)
+        self.assertEqual(links.links.count(url), 3)
+        self.assertIn('q=&quot;&lt;synthetic&gt;&quot;&amp;signature=a%2Fb%3D&amp;xsec_token=synthetic#details', html)
+        self.assertEqual(json.dumps(data, sort_keys=True), original)
+
+    def test_direct_rendering_omits_invalid_map_and_inventory_links(self) -> None:
+        for url in ("javascript:alert(1)", "https:///missing-host", "https://user@example.com/"):
+            with self.subTest(url=url):
+                event = {"title": "Synthetic stop", "type": "note", "map_url": url}
+                self.assertNotIn('class="map-link"', render_itinerary.render_event(event, 1))
+                candidate = {"inventory_refs": [{"snapshot_id": "synthetic", "offer_id": "offer"}]}
+                snapshots = {"synthetic": {"items": [{"offer_id": "offer", "action_link": url}]}}
+                self.assertNotIn("href=", render_itinerary.render_inventory_refs(candidate, snapshots))
+                self.assertNotIn("href=", render_itinerary.render_actions([{"url": url}]))
+
+    def test_valid_https_authorities_and_optional_empty_links_remain_supported(self) -> None:
+        for url in ("https://example.com/", "https://example.com:8443/path?q=a%2Fb", "https://[::1]:8443/"):
+            with self.subTest(url=url):
+                event = {"type": "note", "title": "Synthetic stop", "map_url": url}
+                data = {"trip": {"title": "Synthetic trip"}, "days": [{"events": [event]}]}
+                self.assertIn(f'href="{url}"', render_itinerary.build(data))
+        data = {
+            "trip": {"title": "Synthetic trip"},
+            "days": [{"events": [{"title": "Synthetic stop", "map_url": None}]}],
+            "sources": [{"title": "No link", "url": ""}],
+        }
+        self.assertNotIn('class="map-link"', render_itinerary.build(data))
 
     def test_attraction_costs_render_inside_event(self) -> None:
         data = self.load_example()

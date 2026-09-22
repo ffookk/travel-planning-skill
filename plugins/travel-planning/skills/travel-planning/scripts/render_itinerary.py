@@ -56,6 +56,27 @@ def esc(value: Any) -> str:
     return html.escape(str(value or ""), quote=True)
 
 
+def is_https_url(value: Any) -> bool:
+    """Validate external URLs without rewriting their paths or query parameters."""
+    if not isinstance(value, str) or not value or value != value.strip():
+        return False
+    if "\\" in value or any(ord(character) < 32 or 127 <= ord(character) <= 159 for character in value):
+        return False
+    try:
+        parsed = urlparse(value)
+        hostname = parsed.hostname
+        if parsed.scheme != "https" or not hostname or parsed.username is not None or parsed.password is not None:
+            return False
+        if any(character.isspace() or character in '<>"\'%' for character in hostname):
+            return False
+        if parsed.netloc.startswith("[") and not re.fullmatch(r"\[[^\]]+\](?::[0-9]+)?", parsed.netloc):
+            return False
+        parsed.port
+    except ValueError:
+        return False
+    return True
+
+
 def provider_display_name(value: Any) -> str:
     """Use traveler-facing provider names without leaking internal IDs."""
     text = str(value or "").strip()
@@ -73,7 +94,7 @@ def render_actions(actions: list[dict[str, Any]], extra_html: str = "") -> str:
     links = []
     for action in actions or []:
         url = str(action.get("url") or "")
-        if not url.startswith("https://"):
+        if not is_https_url(url):
             continue
         hint = " · ".join(x for x in [provider_display_name(action.get("provider")), action.get("checked_at"), action.get("disclaimer")] if x)
         links.append(f'<a class="action-link" href="{esc(url)}" target="_blank" rel="noopener noreferrer" title="{esc(hint)}">{esc(action.get("label") or "打开链接")} ↗</a>')
@@ -97,7 +118,7 @@ def render_wechat_action(wechat: dict[str, Any]) -> str:
         ) if item
     )
     guide_url = str(wechat.get("guide_url") or "")
-    if guide_url.startswith("https://"):
+    if is_https_url(guide_url):
         return (
             f'<a class="action-link action-link-wechat" href="{esc(guide_url)}" target="_blank" '
             f'rel="noopener noreferrer" title="{esc(hint)}">公众号预约 ↗</a>'
@@ -184,7 +205,7 @@ def render_route_map(route: dict[str, Any]) -> tuple[str, dict[str, Any] | None]
     map_action = next(
         (
             action for action in route.get("action_links") or []
-            if action.get("type") == "map" and str(action.get("url") or "").startswith("https://")
+            if action.get("type") == "map" and is_https_url(action.get("url"))
         ),
         None,
     )
@@ -338,7 +359,7 @@ def render_restaurant_route_leg(leg: dict[str, Any]) -> str:
     destination = leg.get("destination") or {}
     route_label = f'{esc(origin.get("name"))} → {esc(destination.get("name"))}'
     map_url = str(leg.get("map_url") or "")
-    if map_url.startswith("https://"):
+    if is_https_url(map_url):
         route_heading = f'<a class="restaurant-route-link" href="{esc(map_url)}" target="_blank" rel="noopener noreferrer" title="在高德查看路线"><strong>{route_label} ↗</strong></a>'
     else:
         route_heading = f'<strong>{route_label}</strong>'
@@ -373,18 +394,18 @@ def render_restaurant_candidate(
     community_urls = {
         str(item.get("url") or "")
         for item in community.get("references") or []
-        if str(item.get("url") or "").startswith("https://")
+        if is_https_url(item.get("url"))
     }
     if community:
         community_links = "".join(
             f'<a href="{esc(item.get("url"))}" target="_blank" rel="noopener noreferrer">{esc(item.get("title") or "查看原帖")}{(" · " + esc(item.get("author"))) if item.get("author") else ""} ↗</a>'
             for item in community.get("references") or []
-            if str(item.get("url") or "").startswith("https://")
+            if is_https_url(item.get("url"))
         )
         manual_links = "".join(
             f'<a href="{esc(item.get("url"))}" target="_blank" rel="noopener noreferrer">{esc(item.get("label") or "在小红书搜索这家门店")} ↗</a>'
             for item in community.get("manual_action_links") or []
-            if str(item.get("url") or "").startswith("https://")
+            if is_https_url(item.get("url"))
         )
         if community.get("status") == "unavailable":
             community_text = f'''<div class="restaurant-community"><b>小红书门店搜索</b>{f'<div class="restaurant-community-links">{manual_links}</div>' if manual_links else ''}</div>'''
@@ -484,7 +505,7 @@ def render_weather_badge(weather: dict[str, Any] | None) -> str:
     """Render weather as a compact linked status instead of another fact row."""
     if not weather:
         return ""
-    links = [item for item in weather.get("action_links") or [] if str(item.get("url") or "").startswith("https://")]
+    links = [item for item in weather.get("action_links") or [] if is_https_url(item.get("url"))]
     link = next((item for item in links if item.get("type") == "weather"), links[0] if links else None)
     if not link:
         return ""
@@ -637,11 +658,11 @@ def render_event_images(images: list[dict[str, Any]], title: str) -> str:
     figures = []
     for image in images:
         url = str(image.get("url") or "")
-        if not url.startswith("https://"):
+        if not is_https_url(url):
             continue
         picture = f'<img src="{esc(url)}" alt="{esc(image.get("alt") or title)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest(\'figure\').remove()">'
         source_url = str(image.get("source_url") or "")
-        if source_url.startswith("https://"):
+        if is_https_url(source_url):
             picture = f'<a href="{esc(source_url)}" target="_blank" rel="noopener noreferrer">{picture}</a>'
         attribution = " · ".join(
             str(value) for value in [image.get("source_label"), image.get("author"), image.get("license")]
@@ -655,7 +676,7 @@ def render_community_refs(items: list[dict[str, Any]]) -> str:
     cards = []
     for item in items or []:
         source_url = str(item.get("source_url") or "")
-        if not source_url.startswith("https://"):
+        if not is_https_url(source_url):
             continue
         interactions = item.get("interactions") or {}
         metrics = " · ".join(
@@ -692,16 +713,20 @@ def render_trip_summary(planning: dict[str, Any]) -> str:
 
 
 def validate_action_links(value: Any, path: str = "data") -> None:
-    """Reject unsafe links anywhere in the structured plan, not only in events."""
+    """Reject unsafe external links throughout current and legacy itinerary data."""
     if isinstance(value, dict):
         actions = value.get("action_links")
         if actions is not None:
             if not isinstance(actions, list):
                 raise ValueError(f"{path}.action_links 必须是数组")
             for index, action in enumerate(actions):
-                if not isinstance(action, dict) or not str(action.get("url") or "").startswith("https://"):
+                if not isinstance(action, dict) or not is_https_url(action.get("url")):
                     raise ValueError(f"{path}.action_links[{index}] 必须使用 HTTPS")
         for key, child in value.items():
+            if key in {"url", "map_url", "source_url", "guide_url", "action_link"} and child not in (None, ""):
+                url = child.get("url") if key == "action_link" and isinstance(child, dict) else child
+                if not is_https_url(url):
+                    raise ValueError(f"{path}.{key} must be a valid HTTPS URL without credentials or unsafe characters")
             validate_action_links(child, f"{path}.{key}")
     elif isinstance(value, list):
         for index, child in enumerate(value):
@@ -878,7 +903,7 @@ def validate_restaurant_research_integrity(data: dict[str, Any]) -> None:
             ):
                 raise ValueError(f"餐饮“{meal_id}”的 baseline route 锚点与餐窗不一致")
         baseline_required = {"mode", "routing_policy", "departure_at", "distance_meters", "duration_minutes", "door_to_door_minutes", "map_url", "checked_at", "source_ids"}
-        if any(baseline.get(field) in (None, "", []) for field in baseline_required) or not str(baseline.get("map_url") or "").startswith("https://"):
+        if any(baseline.get(field) in (None, "", []) for field in baseline_required) or not is_https_url(baseline.get("map_url")):
             raise ValueError(f"餐饮“{meal_id}”的 baseline route 缺少同口径路线证据")
 
         seen_pois: set[str] = set()
@@ -906,7 +931,7 @@ def validate_restaurant_research_integrity(data: dict[str, Any]) -> None:
                 required_unavailable = {"query_runs", "failure_kind", "unavailable_reason", "manual_action_links", "recheck_at", "checked_at"}
                 if any(community.get(field) in (None, "", []) for field in required_unavailable):
                     raise ValueError(f"餐厅“{restaurant.get('name') or restaurant_id}”社区不可用时必须记录查询、失败类型、手动入口和复核时间")
-                if any(not str(action.get("url") or "").startswith("https://") for action in community.get("manual_action_links") or []):
+                if any(not is_https_url(action.get("url")) for action in community.get("manual_action_links") or []):
                     raise ValueError(f"餐厅“{restaurant.get('name') or restaurant_id}”的社区手动查询入口必须使用 HTTPS")
             else:
                 references = community.get("references") or []
@@ -1082,7 +1107,7 @@ def validate_embedded_meal(
             references = community.get("references") or []
             if int(community.get("notes_considered") or 0) < minimum_notes or int(community.get("recent_note_count") or 0) < minimum_notes or len(references) < minimum_notes:
                 raise ValueError(f"景点节点“{title}”的餐厅候选“{restaurant_id}”缺少近期社区原帖参考")
-            if any(not ref.get("title") or not str(ref.get("url") or "").startswith("https://") for ref in references):
+            if any(not ref.get("title") or not is_https_url(ref.get("url")) for ref in references):
                 raise ValueError(f"景点节点“{title}”的餐厅候选“{restaurant_id}”社区参考必须提供标题和 HTTPS 原帖链接")
         operations = snapshot.get("operations") or {}
         required_operations = {"opening_hours", "reservation", "queue", "parking", "status", "checked_at", "recheck_at"}
@@ -1093,7 +1118,7 @@ def validate_embedded_meal(
             raise ValueError(f"景点节点“{title}”的餐厅候选“{restaurant_id}”缺少匹配双腿路线")
         for leg_name in ("from_previous", "to_next"):
             leg = evaluation.get(leg_name) or {}
-            if any(leg.get(field) is None for field in ("distance_meters", "duration_minutes", "door_to_door_minutes")) or not str(leg.get("map_url") or "").startswith("https://"):
+            if any(leg.get(field) is None for field in ("distance_meters", "duration_minutes", "door_to_door_minutes")) or not is_https_url(leg.get("map_url")):
                 raise ValueError(f"景点节点“{title}”的餐厅候选“{restaurant_id}”缺少完整 {leg_name} 路线")
             if any(not (leg.get(endpoint) or {}).get(field) for endpoint in ("origin", "destination") for field in ("name", "physical_address", "coordinates")):
                 raise ValueError(f"景点节点“{title}”的餐厅候选“{restaurant_id}”的 {leg_name} 端点缺少名称、具体地址或坐标")
@@ -1111,6 +1136,7 @@ def validate_data(data: dict[str, Any]) -> None:
     trip, days = data.get("trip") or {}, data.get("days") or []
     if not trip.get("title") or not days:
         raise ValueError("必须提供 trip.title，并且 days 至少包含一天行程")
+    validate_action_links(data)
     planning = data.get("planning") or {}
     if not planning:
         return
@@ -1125,7 +1151,6 @@ def validate_data(data: dict[str, Any]) -> None:
             raise ValueError(f"行前就绪项“{item.get('category') or '未命名'}”的 status 无效")
         if item.get("status") == "to_recheck" and not item.get("action_links"):
             raise ValueError(f"待复核的行前就绪项“{item.get('category') or '未命名'}”必须提供 action_links")
-    validate_action_links(data)
     validate_inventory_research(data)
     validate_restaurant_research_integrity(data)
     attraction_records = {x.get("id"): x for x in planning.get("attractions") or [] if x.get("id")}
@@ -1218,7 +1243,7 @@ def validate_data(data: dict[str, Any]) -> None:
                     raise ValueError(f"景点“{attraction.get('name') or title}”的 official 缺少字段：{', '.join(missing_official)}")
                 for field in ("homepage_url", "notice_url", "booking_url"):
                     value = official.get(field)
-                    if value and not str(value).startswith("https://"):
+                    if value and not is_https_url(value):
                         raise ValueError(f"景点“{attraction.get('name') or title}”的 official.{field} 必须使用 HTTPS")
                 wechat = official.get("wechat")
                 if wechat is not None:
@@ -1234,7 +1259,7 @@ def validate_data(data: dict[str, Any]) -> None:
                     guide_url = str(wechat.get("guide_url") or "")
                     if guide_url:
                         guide_host = (urlparse(guide_url).hostname or "").casefold()
-                        if not guide_url.startswith("https://") or guide_host != "mp.weixin.qq.com":
+                        if not is_https_url(guide_url) or guide_host != "mp.weixin.qq.com":
                             raise ValueError(
                                 f"景点“{attraction.get('name') or title}”的 official.wechat.guide_url "
                                 "必须使用 https://mp.weixin.qq.com"
@@ -1426,7 +1451,7 @@ def validate_data(data: dict[str, Any]) -> None:
                             references = community.get("references") or []
                             if notes_considered < minimum_notes or recent_note_count < minimum_notes or len(references) < minimum_notes:
                                 raise ValueError(f"餐厅“{restaurant.get('name') or restaurant_id}”必须提供至少{minimum_notes}条近期社区参考及原帖链接")
-                            if any(not ref.get("title") or not str(ref.get("url") or "").startswith("https://") for ref in references):
+                            if any(not ref.get("title") or not is_https_url(ref.get("url")) for ref in references):
                                 raise ValueError(f"餐厅“{restaurant.get('name') or restaurant_id}”的社区参考必须提供标题和 HTTPS 原帖链接")
                         if restaurant_id == selected and policy_status == "normal" and notes_considered < 3 and community.get("status") != "unavailable":
                             raise ValueError(f"主选餐厅“{restaurant.get('name') or restaurant_id}”必须交叉至少3条近期社区内容，或明确记录来源不可用")
@@ -1449,7 +1474,7 @@ def validate_data(data: dict[str, Any]) -> None:
                         for leg_name in ("from_previous", "to_next"):
                             leg = evaluation.get(leg_name) or {}
                             needed_leg = {"distance_meters", "duration_minutes", "door_to_door_minutes", "map_url"}
-                            if any(leg.get(field) is None for field in needed_leg) or not str(leg.get("map_url") or "").startswith("https://"):
+                            if any(leg.get(field) is None for field in needed_leg) or not is_https_url(leg.get("map_url")):
                                 raise ValueError(f"餐厅“{restaurant.get('name') or restaurant_id}”的 {leg_name} 路线数据不完整")
                             if any(not (leg.get(endpoint) or {}).get(field) for endpoint in ("origin", "destination") for field in ("name", "physical_address", "coordinates")):
                                 raise ValueError(f"餐厅“{restaurant.get('name') or restaurant_id}”的 {leg_name} 端点缺少名称、具体地址或坐标")
@@ -1522,7 +1547,7 @@ def render_inventory_refs(
         link = item.get("action_link")
         action = (
             f'<a href="{esc(link)}" target="_blank" rel="noopener noreferrer">查看供应商结果 ↗</a>'
-            if link else ""
+            if is_https_url(link) else ""
         )
         rows.append(
             f'''<li><strong>{esc(provider.get("name"))} · {esc(item.get("name"))}</strong>
@@ -1781,7 +1806,7 @@ def render_event(
     label, icon = TYPES.get(kind, TYPES["note"])
     images = [image for image in event.get("images") or [] if image.get("url")]
     image_html = render_event_images(images[:3], str(event.get("title") or "景点实景"))
-    map_html = f'<a class="map-link" href="{esc(event["map_url"])}" target="_blank" rel="noopener noreferrer">打开地图 ↗</a>' if event.get("map_url") else ""
+    map_html = f'<a class="map-link" href="{esc(event["map_url"])}" target="_blank" rel="noopener noreferrer">打开地图 ↗</a>' if is_https_url(event.get("map_url")) else ""
     weather_html = render_weather_badge(weather)
     merged_actions = (
         []
@@ -1935,7 +1960,7 @@ def build(data: dict[str, Any]) -> str:
         meal_route_evaluations, lodgings,
     )
     route_overview_html = render_route_overview(days, planning.get("daily_routes") or [])
-    sources_html = "".join(f'<li><a href="{esc(s.get("url"))}" target="_blank" rel="noopener noreferrer">{esc(s.get("title") or s.get("url"))}</a><span>{esc(s.get("note"))}{(" · 核验于 " + esc(s.get("checked_at"))) if s.get("checked_at") else ""}</span></li>' for s in data.get("sources") or [] if s.get("url"))
+    sources_html = "".join(f'<li><a href="{esc(s.get("url"))}" target="_blank" rel="noopener noreferrer">{esc(s.get("title") or s.get("url"))}</a><span>{esc(s.get("note"))}{(" · 核验于 " + esc(s.get("checked_at"))) if s.get("checked_at") else ""}</span></li>' for s in data.get("sources") or [] if is_https_url(s.get("url")))
     meta = " · ".join(str(x) for x in [trip.get("destination"), trip.get("date_range"), trip.get("travelers"), trip.get("budget")] if x)
     return f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(trip.get("title"))}</title>
 <style>
