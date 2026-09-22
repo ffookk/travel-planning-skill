@@ -15,7 +15,7 @@ description: 使用插件内锁定版本的飞猪 FlyAI 通用能力搜索航班
 python3 scripts/providers/flyai_cli.py <command> [arguments]
 ```
 
-上游文档中的 `flyai ...` 命令均映射到上述插件级包装入口。统一环境加载器优先读取根目录 `config/sources.local.env`，安装包中没有该文件时回退到用户级 `~/.config/travel-planning/sources.local.env`，并兼容旧配置目录；它只向 FlyAI 子进程传递自己的配置，不会输出或写回凭证。
+上游文档中的 `flyai ...` 命令均映射到上述插件级包装入口。统一环境加载器优先读取插件根目录的 `config/sources.local.env`，安装包中没有该文件时回退到用户级 `~/.config/travel-planning/sources.local.env`，并兼容旧配置目录；它只向 FlyAI 子进程传递自己的配置，不会输出或写回凭证。
 
 ## 能力路由
 

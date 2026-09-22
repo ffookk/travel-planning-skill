@@ -36,12 +36,6 @@ def source_config_file(
     plugin_local = plugin_root / "config" / "sources.local.env"
     if plugin_local.is_file():
         return plugin_local.resolve()
-    # A repository marketplace keeps the plugin under plugins/<name> while the
-    # developer-owned secret file stays outside the installable plugin tree.
-    if plugin_root.parent.name == "plugins":
-        repository_local = plugin_root.parents[1] / "config" / "sources.local.env"
-        if repository_local.is_file():
-            return repository_local.resolve()
     config_home = Path(values.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
     current = config_home / "travel-planning" / "sources.local.env"
     legacy = config_home / "travel-itinerary-page" / "sources.local.env"

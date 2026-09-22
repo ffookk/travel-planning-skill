@@ -33,22 +33,6 @@ class RuntimeEnvironmentTest(unittest.TestCase):
                 local.resolve(),
             )
 
-    def test_repository_config_is_used_without_entering_plugin_package(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            repository = Path(directory) / "repository"
-            root = repository / "plugins" / "travel-planning"
-            root.mkdir(parents=True)
-            local = repository / "config" / "sources.local.env"
-            local.parent.mkdir(parents=True)
-            local.write_text("AMAP_API_KEY=test\n", encoding="utf-8")
-            config_home = Path(directory) / "user-config"
-            self.assertEqual(
-                source_config_file(
-                    {"XDG_CONFIG_HOME": str(config_home)}, plugin_root=root
-                ),
-                local.resolve(),
-            )
-
     def test_user_config_is_fallback_when_plugin_local_is_absent(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "plugin"

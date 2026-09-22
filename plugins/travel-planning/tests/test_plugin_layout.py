@@ -75,12 +75,11 @@ class PluginLayoutTest(unittest.TestCase):
 
     def test_runtime_secrets_are_ignored_by_source_control(self) -> None:
         self.assertTrue((ROOT / "config/sources.example.env").is_file())
-        self.assertFalse((ROOT / "config/sources.local.env").exists())
         repository_ignore = REPOSITORY_ROOT / ".gitignore"
         if repository_ignore.is_file():
             ignored = repository_ignore.read_text(encoding="utf-8").splitlines()
-            self.assertIn("/config/sources.local.env", ignored)
-            self.assertTrue((REPOSITORY_ROOT / "config/sources.local.env").is_file())
+            self.assertIn("**/config/sources.local.env", ignored)
+            self.assertTrue((ROOT / "config/sources.local.env").is_file())
         self.assertFalse((ROOT / ".travel-tools").exists())
 
     def test_provider_runtime_is_not_nested_inside_skills(self) -> None:

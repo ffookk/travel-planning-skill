@@ -2,7 +2,6 @@
 .travel-tools/
 .playwright-cli/
 output/
-/config/sources.local.env
 **/config/sources.local.env
 __pycache__/
 *.pyc

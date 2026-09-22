@@ -25,9 +25,9 @@
 - Skills：`plugins/travel-planning/skills/`
 - 插件级 Provider 启动器与环境加载：`plugins/travel-planning/scripts/providers/`、`plugins/travel-planning/scripts/runtime_env.py`
 - 可提交的环境变量模板：`plugins/travel-planning/config/sources.example.env`
-- 本机开发配置：`config/sources.local.env`（已忽略，位于可安装插件目录之外）
+- 本机开发配置：`plugins/travel-planning/config/sources.local.env`（已忽略，不会进入安装包）
 
-插件清单注册四个 MCP Server：高德地图 `amap-maps`、飞常准 `variflight-aviation`、`variflight-tripmatch`，以及本机 `xiaohongshu-mcp`。源码开发时，插件级启动器读取仓库根目录的本机配置；安装包回退到用户级 `~/.config/travel-planning/sources.local.env`，并兼容读取旧的 `~/.config/travel-itinerary-page/sources.local.env`。各 Provider 凭证彼此隔离；高德同时兼容已有的 `AMAP_API_KEY`，并只向官方 MCP 进程映射为 `AMAP_MAPS_API_KEY`。Skill 目录不保存环境配置或 Provider 启动器。
+插件清单注册四个 MCP Server：高德地图 `amap-maps`、飞常准 `variflight-aviation`、`variflight-tripmatch`，以及本机 `xiaohongshu-mcp`。源码开发时，插件级启动器读取插件目录内的本机配置；安装包不会携带该私密文件，因此回退到用户级 `~/.config/travel-planning/sources.local.env`，并兼容读取旧的 `~/.config/travel-itinerary-page/sources.local.env`。各 Provider 凭证彼此隔离；高德同时兼容已有的 `AMAP_API_KEY`，并只向官方 MCP 进程映射为 `AMAP_MAPS_API_KEY`。Skill 目录不保存环境配置或 Provider 启动器。
 
 生成路线候选前，主 Skill 会在小红书已配置且登录态可用时执行一次有上限的目的地玩法与美食主题预研；它只影响路线比较和后续候选加分，不替代具体门店、营业或价格核验。路线确认、进入深度规划前，主 Skill 再运行统一 `preflight`：三个 MCP 执行协议握手、工具发现与只读上游探测，飞猪、Open-Meteo 和小红书也分别验证真实运行态。调用方通过重复的 `--require` 标记本次行程必需来源；必需来源失败时命令返回非零，非必需来源失败则明确降级并保留 fallback。
 
