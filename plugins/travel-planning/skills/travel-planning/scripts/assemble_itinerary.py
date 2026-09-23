@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,29 @@ OUTPUT_COLLECTIONS = (
 
 class AssemblyError(ValueError):
     """Raised when a plan cannot be assembled safely."""
+
+
+def workspace_input(workspace: Path, path: str | Path, label: str) -> Path:
+    """Resolve a workspace-owned input before reading it, including symlinks."""
+    try:
+        root = workspace.resolve()
+        candidate = root / path
+        try:
+            resolved = candidate.resolve(strict=True)
+        except FileNotFoundError:
+            # Keep missing-input handling while rejecting unresolved symlink loops.
+            resolved = candidate.resolve()
+        resolved.relative_to(root)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        raise AssemblyError(f"{label} must resolve inside the workspace") from None
+    return resolved
+
+
+def validate_task_id(value: Any) -> str:
+    """Use the same task identifier contract as the research workspace writer."""
+    if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", value):
+        raise AssemblyError("Task IDs must use 1-64 lowercase letters, digits, underscores or hyphens and start with a letter or digit")
+    return value
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -376,10 +400,12 @@ def load_collections(
         if not isinstance(binding, dict):
             raise AssemblyError(f"collections.{name} 必须是对象")
         if binding.get("task"):
-            task_id = str(binding["task"])
-            payload = task_results.setdefault(task_id, read_json(workspace / "results" / f"{task_id}.json"))
+            task_id = validate_task_id(binding["task"])
+            path = workspace_input(workspace, Path("results") / f"{task_id}.json", "Task result")
+            payload = task_results.setdefault(task_id, read_json(path))
         elif binding.get("file"):
-            payload = read_json(workspace / str(binding["file"]))
+            path = workspace_input(workspace, binding["file"], "Collection file")
+            payload = read_json(path)
         else:
             raise AssemblyError(f"collections.{name} 必须声明 task 或 file")
         raw = get_path(payload, str(binding.get("path") or ""))
@@ -405,8 +431,12 @@ def load_collections(
 def load_source_snapshots(workspace: Path, task_results: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     snapshots: dict[str, dict[str, Any]] = {}
     for task_id, result in task_results.items():
+        task_id = validate_task_id(task_id)
         for snapshot_id in result.get("source_snapshot_ids") or []:
-            snapshot = read_json(workspace / "snapshots" / task_id / f"{snapshot_id}.json")
+            path = workspace_input(
+                workspace, Path("snapshots") / task_id / f"{snapshot_id}.json", "Source snapshot"
+            )
+            snapshot = read_json(path)
             if snapshot_id in snapshots and snapshots[snapshot_id] != snapshot:
                 raise AssemblyError(f"动态快照 ID 冲突：{snapshot_id}")
             snapshots[str(snapshot_id)] = snapshot
@@ -415,7 +445,9 @@ def load_source_snapshots(workspace: Path, task_results: dict[str, dict[str, Any
 
 def collect_sources(workspace: Path, allowed_ids: list[str] | None = None) -> list[dict[str, Any]]:
     merged: dict[str, dict[str, Any]] = {}
-    for path in sorted((workspace / "sources").glob("*.jsonl")):
+    source_directory = workspace_input(workspace, "sources", "Source directory")
+    for source_path in sorted(source_directory.glob("*.jsonl")):
+        path = workspace_input(workspace, source_path, "Source file")
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             if not line.strip():
                 continue
@@ -534,10 +566,10 @@ def validate_plan(workspace: Path, plan: dict[str, Any]) -> None:
     for field in ("trip", "workflow", "collections", "days"):
         if field not in plan:
             raise AssemblyError(f"plan 缺少 {field}")
-    selected_route = read_json(workspace / "selected-route.json")
+    selected_route = read_json(workspace_input(workspace, "selected-route.json", "Selected route"))
     if plan["workflow"].get("selected_route_id") != selected_route.get("id"):
         raise AssemblyError("plan.selected_route_id 与 workspace 已确认路线不一致")
-    research_path = workspace / "state" / "research.json"
+    research_path = workspace_input(workspace, "state/research.json", "Research state")
     actual_digest = sha256_file(research_path)
     if plan.get("research_state_sha256") != actual_digest:
         raise AssemblyError(
@@ -617,9 +649,9 @@ def main() -> int:
     args = build_parser().parse_args()
     workspace = args.workspace.resolve()
     if args.print_research_sha256:
-        print(sha256_file(workspace / "state" / "research.json"))
+        print(sha256_file(workspace_input(workspace, "state/research.json", "Research state")))
         return 0
-    plan_path = args.plan.resolve() if args.plan else workspace / "state" / "itinerary-plan.json"
+    plan_path = args.plan.resolve() if args.plan else workspace_input(workspace, "state/itinerary-plan.json", "Default plan")
     output = args.output.resolve() if args.output else workspace / "artifacts" / "itinerary.json"
     payload = assemble(workspace, plan_path)
     output.parent.mkdir(parents=True, exist_ok=True)

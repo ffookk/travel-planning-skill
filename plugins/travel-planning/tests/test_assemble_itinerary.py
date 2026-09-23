@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import io
 import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+from contextlib import redirect_stdout
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "skills" / "travel-planning" / "scripts" / "assemble_itinerary.py"
@@ -85,6 +88,216 @@ class AssembleItineraryTest(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
+
+    def assert_contained_failure(self, operation, message: str) -> None:
+        read_text = Path.read_text
+        read_bytes = Path.read_bytes
+
+        def checked_read(method, path, *args, **kwargs):
+            self.assertTrue(path.resolve().is_relative_to(self.workspace.resolve()), "Outside read attempted")
+            return method(path, *args, **kwargs)
+
+        with patch.object(Path, "read_text", autospec=True, side_effect=lambda path, *args, **kwargs: checked_read(read_text, path, *args, **kwargs)):
+            with patch.object(Path, "read_bytes", autospec=True, side_effect=lambda path, *args, **kwargs: checked_read(read_bytes, path, *args, **kwargs)):
+                with self.assertRaisesRegex(assemble_itinerary.AssemblyError, message) as raised:
+                    operation()
+        self.assertNotIn(str(self.workspace.parent), str(raised.exception))
+        self.assertNotIn("SYNTHETIC-PRIVATE", str(raised.exception))
+
+    def test_collection_files_cannot_read_outside_workspace(self) -> None:
+        outside = self.workspace.parent / "private.json"
+        write_json(outside, {"private": "SYNTHETIC-PRIVATE"})
+        sibling = self.workspace.parent / "trip-sibling" / "private.json"
+        write_json(sibling, {"private": "SYNTHETIC-PRIVATE"})
+        (self.workspace / "state" / "external.json").symlink_to(outside)
+        (self.workspace / "external-directory").symlink_to(sibling.parent, target_is_directory=True)
+        references = (
+            "../private.json", str(outside), "../trip-sibling/private.json",
+            "state/external.json", "external-directory/private.json",
+        )
+        for reference in references:
+            with self.subTest(reference=reference):
+                self.plan["collections"]["attractions"] = {"file": reference, "path": "entities.attractions"}
+                write_json(self.plan_path, self.plan)
+                self.assert_contained_failure(
+                    lambda: assemble_itinerary.assemble(self.workspace, self.plan_path),
+                    "Collection file must resolve inside the workspace",
+                )
+
+    def test_internal_collection_paths_preserve_assembled_content(self) -> None:
+        expected = assemble_itinerary.assemble(self.workspace, self.plan_path)
+        result_path = self.workspace / "results" / "attractions.json"
+        (self.workspace / "state" / "internal.json").symlink_to("../results/attractions.json")
+        for reference in ("results/attractions.json", str(result_path), "state/internal.json", "state/../results/attractions.json"):
+            with self.subTest(reference=reference):
+                self.plan["collections"]["attractions"] = {
+                    "file": reference, "path": "entities.attractions", "ids": ["museum"],
+                }
+                write_json(self.plan_path, self.plan)
+                self.assertEqual(assemble_itinerary.assemble(self.workspace, self.plan_path), expected)
+
+    def test_rejects_invalid_task_ids_before_reading_results(self) -> None:
+        for task_id in ("../private", "/private", "nested/task", "nested\\task", "..", "Uppercase", "_prefix", "a" * 65, 123):
+            with self.subTest(task_id=task_id):
+                self.plan["collections"]["attractions"]["task"] = task_id
+                with patch.object(assemble_itinerary, "read_json") as reader:
+                    with self.assertRaisesRegex(assemble_itinerary.AssemblyError, "Task IDs must use"):
+                        assemble_itinerary.load_collections(self.workspace, self.plan)
+                    reader.assert_not_called()
+
+    def test_valid_task_ids_and_internal_result_symlinks_remain_supported(self) -> None:
+        expected = assemble_itinerary.assemble(self.workspace, self.plan_path)
+        for task_id in ("task_1-test", "a" * 64):
+            with self.subTest(task_id=task_id):
+                (self.workspace / "results" / f"{task_id}.json").symlink_to("attractions.json")
+                self.plan["collections"]["attractions"]["task"] = task_id
+                write_json(self.plan_path, self.plan)
+                self.assertEqual(assemble_itinerary.assemble(self.workspace, self.plan_path), expected)
+
+    def test_result_symlink_cannot_read_outside_workspace(self) -> None:
+        outside = self.workspace.parent / "private.json"
+        write_json(outside, {"private": "SYNTHETIC-PRIVATE"})
+        result_path = self.workspace / "results" / "attractions.json"
+        result_path.unlink()
+        result_path.symlink_to(outside)
+        self.assert_contained_failure(
+            lambda: assemble_itinerary.assemble(self.workspace, self.plan_path),
+            "Task result must resolve inside the workspace",
+        )
+
+    def test_snapshot_references_cannot_read_outside_workspace(self) -> None:
+        outside = self.workspace.parent / "private.json"
+        write_json(outside, {"private": "SYNTHETIC-PRIVATE"})
+        snapshot_directory = self.workspace / "snapshots" / "attractions"
+        snapshot_directory.mkdir()
+        (snapshot_directory / "linked.json").symlink_to(outside)
+        for snapshot_id in ("../../../private", str(outside.with_suffix("")), "linked"):
+            with self.subTest(snapshot_id=snapshot_id):
+                tasks = {"attractions": {"source_snapshot_ids": [snapshot_id]}}
+                self.assert_contained_failure(
+                    lambda: assemble_itinerary.load_source_snapshots(self.workspace, tasks),
+                    "Source snapshot must resolve inside the workspace",
+                )
+        with patch.object(assemble_itinerary, "read_json") as reader:
+            with self.assertRaisesRegex(assemble_itinerary.AssemblyError, "Task IDs must use"):
+                assemble_itinerary.load_source_snapshots(self.workspace, {"../private": {"source_snapshot_ids": ["id"]}})
+            reader.assert_not_called()
+
+    def test_internal_snapshot_symlink_preserves_snapshot(self) -> None:
+        expected = {"snapshot_id": "synthetic", "items": [{"offer_id": "offer"}]}
+        write_json(self.workspace / "state" / "snapshot.json", expected)
+        snapshot_directory = self.workspace / "snapshots" / "attractions"
+        snapshot_directory.mkdir()
+        (snapshot_directory / "synthetic.json").symlink_to("../../state/snapshot.json")
+        self.assertEqual(
+            assemble_itinerary.load_source_snapshots(self.workspace, {"attractions": {"source_snapshot_ids": ["synthetic"]}}),
+            [expected],
+        )
+
+    def test_source_file_symlink_cannot_read_outside_workspace(self) -> None:
+        outside = self.workspace.parent / "private.jsonl"
+        outside.write_text('{"private":"SYNTHETIC-PRIVATE"}\n', encoding="utf-8")
+        (self.workspace / "sources" / "linked.jsonl").symlink_to(outside)
+        self.assert_contained_failure(
+            lambda: assemble_itinerary.collect_sources(self.workspace),
+            "Source file must resolve inside the workspace",
+        )
+
+    def test_source_directory_symlink_is_rejected_before_enumeration(self) -> None:
+        source_directory = self.workspace / "sources"
+        source_directory.rmdir()
+        source_directory.symlink_to(self.workspace.parent, target_is_directory=True)
+        with patch.object(Path, "glob") as enumerate_sources:
+            self.assert_contained_failure(
+                lambda: assemble_itinerary.collect_sources(self.workspace),
+                "Source directory must resolve inside the workspace",
+            )
+            enumerate_sources.assert_not_called()
+
+    def test_missing_optional_source_directory_remains_empty(self) -> None:
+        (self.workspace / "sources").rmdir()
+        self.assertEqual(assemble_itinerary.collect_sources(self.workspace), [])
+
+    def test_internal_source_directory_and_file_symlinks_remain_supported(self) -> None:
+        stored_sources = self.workspace / "state" / "source-store"
+        stored_sources.mkdir()
+        source = {"id": "source-1", "title": "Synthetic source", "url": "https://example.com/", "summary": "Public summary"}
+        (self.workspace / "state" / "source-record.jsonl").write_text(json.dumps(source) + "\n", encoding="utf-8")
+        (stored_sources / "linked.jsonl").symlink_to("../source-record.jsonl")
+        (self.workspace / "sources").rmdir()
+        (self.workspace / "sources").symlink_to("state/source-store", target_is_directory=True)
+        result = assemble_itinerary.collect_sources(self.workspace)
+        self.assertEqual(result, [{"id": "source-1", "title": "Synthetic source", "url": "https://example.com/", "note": "Public summary", "checked_at": None}])
+
+    def test_route_and_research_state_symlinks_cannot_escape_workspace(self) -> None:
+        outside = self.workspace.parent / "private.json"
+        write_json(outside, {"private": "SYNTHETIC-PRIVATE"})
+        for relative, label in (("selected-route.json", "Selected route"), ("state/research.json", "Research state")):
+            with self.subTest(relative=relative):
+                path = self.workspace / relative
+                original = path.read_bytes()
+                path.unlink()
+                path.symlink_to(outside)
+                self.assert_contained_failure(
+                    lambda: assemble_itinerary.assemble(self.workspace, self.plan_path),
+                    f"{label} must resolve inside the workspace",
+                )
+                path.unlink()
+                path.write_bytes(original)
+
+    def test_default_plan_symlink_is_rejected_before_read(self) -> None:
+        outside = self.workspace.parent / "private.json"
+        write_json(outside, {"private": "SYNTHETIC-PRIVATE"})
+        self.plan_path.unlink()
+        self.plan_path.symlink_to(outside)
+        with patch("sys.argv", ["assemble_itinerary.py", "--workspace", str(self.workspace)]):
+            self.assert_contained_failure(assemble_itinerary.main, "Default plan must resolve inside the workspace")
+        self.assertFalse((self.workspace / "artifacts" / "itinerary.json").exists())
+
+    def test_research_digest_command_rejects_external_symlink(self) -> None:
+        outside = self.workspace.parent / "private.json"
+        write_json(outside, {"private": "SYNTHETIC-PRIVATE"})
+        research_path = self.workspace / "state" / "research.json"
+        research_path.unlink()
+        research_path.symlink_to(outside)
+        with patch("sys.argv", ["assemble_itinerary.py", "--workspace", str(self.workspace), "--print-research-sha256"]):
+            self.assert_contained_failure(assemble_itinerary.main, "Research state must resolve inside the workspace")
+
+    def test_default_cli_and_explicit_external_plan_and_output_remain_supported(self) -> None:
+        expected = assemble_itinerary.assemble(self.workspace, self.plan_path)
+        with patch("sys.argv", ["assemble_itinerary.py", "--workspace", str(self.workspace)]), redirect_stdout(io.StringIO()):
+            self.assertEqual(assemble_itinerary.main(), 0)
+        default_output = self.workspace / "artifacts" / "itinerary.json"
+        self.assertEqual(json.loads(default_output.read_text(encoding="utf-8")), expected)
+        explicit_plan = self.workspace.parent / "explicit-plan.json"
+        write_json(explicit_plan, self.plan)
+        explicit_output = self.workspace.parent / "explicit-output.json"
+        arguments = ["assemble_itinerary.py", "--workspace", str(self.workspace), "--plan", str(explicit_plan), "--output", str(explicit_output)]
+        with patch("sys.argv", arguments), redirect_stdout(io.StringIO()):
+            self.assertEqual(assemble_itinerary.main(), 0)
+        self.assertEqual(json.loads(explicit_output.read_text(encoding="utf-8")), expected)
+
+    def test_internal_default_plan_and_state_symlinks_preserve_output(self) -> None:
+        expected = assemble_itinerary.assemble(self.workspace, self.plan_path)
+        for relative in ("selected-route.json", "state/research.json", "state/itinerary-plan.json"):
+            path = self.workspace / relative
+            stored = path.with_name(f"stored-{path.name}")
+            path.rename(stored)
+            path.symlink_to(stored.name)
+        with patch("sys.argv", ["assemble_itinerary.py", "--workspace", str(self.workspace)]), redirect_stdout(io.StringIO()):
+            self.assertEqual(assemble_itinerary.main(), 0)
+        result = json.loads((self.workspace / "artifacts" / "itinerary.json").read_text(encoding="utf-8"))
+        self.assertEqual(result, expected)
+
+    def test_cyclic_collection_symlink_has_a_path_free_error(self) -> None:
+        (self.workspace / "state" / "first.json").symlink_to("second.json")
+        (self.workspace / "state" / "second.json").symlink_to("first.json")
+        self.plan["collections"]["attractions"] = {"file": "state/first.json", "path": "entities.attractions"}
+        with patch.object(assemble_itinerary, "read_json") as reader:
+            with self.assertRaisesRegex(assemble_itinerary.AssemblyError, "Collection file must resolve inside the workspace") as raised:
+                assemble_itinerary.load_collections(self.workspace, self.plan)
+            reader.assert_not_called()
+        self.assertNotIn(str(self.workspace), str(raised.exception))
 
     def test_assembles_selected_research_and_declarative_schedule(self) -> None:
         result = assemble_itinerary.assemble(self.workspace, self.plan_path)
