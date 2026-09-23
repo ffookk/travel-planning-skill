@@ -322,6 +322,41 @@ class ResearchWorkspaceTest(unittest.TestCase):
         with self.assertRaisesRegex(research_workspace.WorkspaceError, "必须投影为候选并绑定"):
             research_workspace.validate_inventory_bindings(result, [inventory_snapshot()])
 
+    def test_snapshot_freshness_compares_offsets_without_rewriting_evidence(self) -> None:
+        for checked, expires in (
+            ("2026-09-21T10:00:00+08:00", "2026-09-21T03:00:00Z"),
+            ("2026-09-21T10:00:00", "2026-09-21T10:30:00"),
+            ("2026-09-21", "2026-09-22"),
+        ):
+            with self.subTest(checked=checked, expires=expires):
+                snapshot = inventory_snapshot()
+                snapshot["freshness"].update(checked_at=checked, expires_at=expires)
+                original = json.dumps(snapshot, sort_keys=True)
+                research_workspace.validate_source_snapshot(snapshot)
+                self.assertEqual(json.dumps(snapshot, sort_keys=True), original)
+
+    def test_snapshot_freshness_rejects_nonpositive_instant_intervals(self) -> None:
+        for checked, expires in (
+            ("2026-09-21T10:00:00+08:00", "2026-09-21T02:00:00Z"),
+            ("2026-09-21T10:00:00Z", "2026-09-21T10:30:00+08:00"),
+        ):
+            with self.subTest(checked=checked, expires=expires):
+                snapshot = inventory_snapshot()
+                snapshot["freshness"].update(checked_at=checked, expires_at=expires)
+                with self.assertRaisesRegex(research_workspace.WorkspaceError, "expires_at.*checked_at"):
+                    research_workspace.validate_source_snapshot(snapshot)
+
+    def test_snapshot_freshness_reports_mixed_offsets_as_workspace_errors(self) -> None:
+        for checked, expires in (
+            ("2026-09-21T10:00:00+08:00", "2026-09-21T10:30:00"),
+            ("2026-09-21T10:00:00", "2026-09-21T10:30:00Z"),
+        ):
+            with self.subTest(checked=checked, expires=expires):
+                snapshot = inventory_snapshot()
+                snapshot["freshness"].update(checked_at=checked, expires_at=expires)
+                with self.assertRaisesRegex(research_workspace.WorkspaceError, "checked_at/expires_at.*UTC offsets"):
+                    research_workspace.validate_source_snapshot(snapshot)
+
     def test_restaurant_assignment_uses_v4_template_and_owned_entities(self) -> None:
         assigned = research_workspace.assign(
             Namespace(

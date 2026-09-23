@@ -8,7 +8,7 @@ import html
 import json
 import math
 import re
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlencode, urlparse
@@ -730,10 +730,41 @@ def point_distance_meters(first: tuple[float, float], second: tuple[float, float
 
 
 def iso_date(value: Any, path: str) -> datetime:
+    """Parse an ISO value without discarding an explicit UTC offset."""
     try:
-        return datetime.fromisoformat(str(value or "").replace("Z", "+00:00")).replace(tzinfo=None)
+        return datetime.fromisoformat(str(value or "").replace("Z", "+00:00"))
     except ValueError as error:
         raise ValueError(f"{path} 必须是 ISO 日期或时间") from error
+
+
+def require_matching_offsets(first: datetime, second: datetime, path: str) -> None:
+    if (first.utcoffset() is None) != (second.utcoffset() is None):
+        raise ValueError(
+            f"{path}: timestamps must both include UTC offsets or both omit them; "
+            "add explicit offsets to identify the intended instants"
+        )
+
+
+def snapshot_freshness_bounds(freshness: dict[str, Any], snapshot_id: str) -> tuple[datetime, datetime]:
+    if not freshness.get("checked_at") or not freshness.get("expires_at"):
+        raise ValueError(f"酒旅快照“{snapshot_id}”缺少 checked_at 或 expires_at")
+    checked = iso_date(freshness["checked_at"], f"酒旅快照“{snapshot_id}”.checked_at")
+    expires = iso_date(freshness["expires_at"], f"酒旅快照“{snapshot_id}”.expires_at")
+    require_matching_offsets(checked, expires, f"Snapshot {snapshot_id} checked_at/expires_at")
+    if expires <= checked:
+        raise ValueError(f"酒旅快照“{snapshot_id}”的 expires_at 必须晚于 checked_at")
+    return checked, expires
+
+
+def community_time_pair(
+    first: Any, second: Any, first_path: str, second_path: str,
+) -> tuple[date, date] | tuple[datetime, datetime]:
+    """Use calendar precision when a community source provides only a date."""
+    first_time, second_time = iso_date(first, first_path), iso_date(second, second_path)
+    if any(re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(value or "")) for value in (first, second)):
+        return first_time.date(), second_time.date()
+    require_matching_offsets(first_time, second_time, f"{first_path}/{second_path}")
+    return first_time, second_time
 
 
 def validate_inventory_research(data: dict[str, Any]) -> None:
@@ -752,12 +783,7 @@ def validate_inventory_research(data: dict[str, Any]) -> None:
         if snapshot.get("status") not in {"platform_reported", "no_results"}:
             raise ValueError(f"酒旅快照“{snapshot_id}”的 status 无效")
         freshness = snapshot.get("freshness") or {}
-        if not freshness.get("checked_at") or not freshness.get("expires_at"):
-            raise ValueError(f"酒旅快照“{snapshot_id}”缺少 checked_at 或 expires_at")
-        checked = iso_date(freshness["checked_at"], f"酒旅快照“{snapshot_id}”.checked_at")
-        expires = iso_date(freshness["expires_at"], f"酒旅快照“{snapshot_id}”.expires_at")
-        if expires <= checked:
-            raise ValueError(f"酒旅快照“{snapshot_id}”的 expires_at 必须晚于 checked_at")
+        snapshot_freshness_bounds(freshness, snapshot_id)
         items = snapshot.get("items") or []
         if snapshot.get("count") != len(items):
             raise ValueError(f"酒旅快照“{snapshot_id}”的 count 与 items 不一致")
@@ -915,7 +941,9 @@ def validate_restaurant_research_integrity(data: dict[str, Any]) -> None:
                 note_ids: set[str] = set()
                 urls: set[str] = set()
                 authors: set[str] = set()
-                checked = iso_date(community.get("checked_at"), f"{restaurant_id}.community.checked_at")
+                checked_value = community.get("checked_at")
+                checked_path = f"{restaurant_id}.community.checked_at"
+                iso_date(checked_value, checked_path)
                 for reference in references:
                     required_reference = {"note_id", "title", "url", "author", "published_at", "checked_at", "source_id"}
                     if any(reference.get(field) in (None, "") for field in required_reference):
@@ -925,11 +953,17 @@ def validate_restaurant_research_integrity(data: dict[str, Any]) -> None:
                     host = (urlparse(str(reference["url"])).hostname or "").casefold()
                     if "小红书" in str(community.get("platform")) and not (host == "xiaohongshu.com" or host.endswith(".xiaohongshu.com")):
                         raise ValueError(f"餐厅“{restaurant.get('name') or restaurant_id}”的小红书原帖 URL 域名不匹配")
-                    published = iso_date(reference["published_at"], f"{restaurant_id}.community.published_at")
-                    reference_checked = iso_date(reference["checked_at"], f"{restaurant_id}.community.reference.checked_at")
+                    published_path = f"{restaurant_id}.community.published_at"
+                    published, checked = community_time_pair(
+                        reference["published_at"], checked_value, published_path, checked_path,
+                    )
+                    reference_published, reference_checked = community_time_pair(
+                        reference["published_at"], reference["checked_at"], published_path,
+                        f"{restaurant_id}.community.reference.checked_at",
+                    )
                     if published > checked or published < checked - timedelta(days=366):
                         raise ValueError(f"餐厅“{restaurant.get('name') or restaurant_id}”的社区原帖不在查询前12个月内")
-                    if reference_checked < published:
+                    if reference_checked < reference_published:
                         raise ValueError(f"餐厅“{restaurant.get('name') or restaurant_id}”的社区原帖查询时间早于发布时间")
                     if reference["note_id"] in note_ids or reference["url"] in urls:
                         raise ValueError(f"餐厅“{restaurant.get('name') or restaurant_id}”的社区原帖不能重复")

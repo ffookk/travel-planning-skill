@@ -188,6 +188,114 @@ class RenderItineraryTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "offer_id 不属于引用快照"):
             render_itinerary.validate_data(data)
 
+    def test_inventory_freshness_uses_instant_order_and_preserves_original_values(self) -> None:
+        for checked, expires in (
+            ("2026-09-21T10:00:00+08:00", "2026-09-21T03:00:00Z"),
+            ("2026-09-21T10:00:00", "2026-09-21T10:30:00"),
+            ("2026-09-21", "2026-09-22"),
+        ):
+            with self.subTest(checked=checked, expires=expires):
+                data = self.load_example()
+                add_inventory_binding(data)
+                freshness = data["planning"]["source_snapshots"][0]["freshness"]
+                freshness.update(checked_at=checked, expires_at=expires)
+                original = json.dumps(data, sort_keys=True)
+
+                html = render_itinerary.build(data)
+
+                self.assertIn(checked, html)
+                self.assertIn(expires, html)
+                self.assertEqual(json.dumps(data, sort_keys=True), original)
+
+    def test_inventory_freshness_rejects_equal_or_earlier_instants(self) -> None:
+        for checked, expires in (
+            ("2026-09-21T10:00:00+08:00", "2026-09-21T02:00:00Z"),
+            ("2026-09-21T10:00:00Z", "2026-09-21T10:30:00+08:00"),
+        ):
+            with self.subTest(checked=checked, expires=expires):
+                data = self.load_example()
+                add_inventory_binding(data)
+                data["planning"]["source_snapshots"][0]["freshness"].update(
+                    checked_at=checked, expires_at=expires,
+                )
+                with self.assertRaisesRegex(ValueError, "expires_at.*checked_at"):
+                    render_itinerary.validate_data(data)
+
+    def test_inventory_freshness_rejects_mixed_offset_precision(self) -> None:
+        for checked, expires in (
+            ("2026-09-21T10:00:00+08:00", "2026-09-21T10:30:00"),
+            ("2026-09-21T10:00:00", "2026-09-21T10:30:00Z"),
+        ):
+            with self.subTest(checked=checked, expires=expires):
+                data = self.load_example()
+                add_inventory_binding(data)
+                data["planning"]["source_snapshots"][0]["freshness"].update(
+                    checked_at=checked, expires_at=expires,
+                )
+                with self.assertRaisesRegex(ValueError, "checked_at/expires_at.*UTC offsets"):
+                    render_itinerary.validate_data(data)
+
+    def test_community_timestamp_order_uses_explicit_offsets(self) -> None:
+        data = self.load_example()
+        community = data["planning"]["restaurant_snapshots"][0]["community_consensus"]
+        community["checked_at"] = "2026-09-20T03:00:00Z"
+        reference = community["references"][0]
+        reference["published_at"] = "2026-09-20T10:00:00+08:00"
+        reference["checked_at"] = "2026-09-20T03:00:00Z"
+        render_itinerary.validate_data(data)
+
+        reference["published_at"] = "2026-09-20T04:00:00Z"
+        community["checked_at"] = "2026-09-20T11:00:00+08:00"
+        reference["checked_at"] = "2026-09-20T12:00:00+08:00"
+        with self.assertRaisesRegex(ValueError, "12个月"):
+            render_itinerary.validate_data(data)
+
+    def test_community_reference_cannot_be_checked_before_its_publication_instant(self) -> None:
+        data = self.load_example()
+        community = data["planning"]["restaurant_snapshots"][0]["community_consensus"]
+        community["checked_at"] = "2026-09-20T12:00:00Z"
+        reference = community["references"][0]
+        reference["published_at"] = "2026-09-20T03:00:00Z"
+        reference["checked_at"] = "2026-09-20T10:00:00+08:00"
+        with self.assertRaisesRegex(ValueError, "早于发布时间"):
+            render_itinerary.validate_data(data)
+
+    def test_community_full_timestamps_cannot_mix_aware_and_naive_values(self) -> None:
+        data = self.load_example()
+        community = data["planning"]["restaurant_snapshots"][0]["community_consensus"]
+        community["checked_at"] = "2026-09-20T12:00:00Z"
+        community["references"][0]["published_at"] = "2026-09-20T10:00:00"
+        with self.assertRaisesRegex(ValueError, "community.*UTC offsets"):
+            render_itinerary.validate_data(data)
+
+    def test_calendar_dates_keep_local_day_precision_and_hotel_nights(self) -> None:
+        data = self.load_example()
+        community = data["planning"]["restaurant_snapshots"][0]["community_consensus"]
+        community["checked_at"] = "2026-09-20"
+        reference = community["references"][0]
+        reference["published_at"] = "2026-09-20T23:30:00-07:00"
+        reference["checked_at"] = "2026-09-20"
+        lodging = {
+            "id": "calendar-hotel", "name": "Synthetic Hotel",
+            "check_in": "2026-10-03", "check_out": "2026-10-05", "nights": 2,
+        }
+        data["planning"].setdefault("lodging_options", []).append(lodging)
+        data["days"][0]["events"].append({
+            "id": "calendar-lodging-event", "type": "lodging", "title": "Synthetic Hotel",
+            "lodging_id": "calendar-hotel", "time": "20:00",
+        })
+        original = json.dumps(data, sort_keys=True)
+
+        html = render_itinerary.build(data)
+
+        self.assertIn("2晚", html)
+        self.assertEqual(json.dumps(data, sort_keys=True), original)
+
+        reference["published_at"] = "2026-09-20"
+        community["checked_at"] = "2026-09-20T00:30:00+14:00"
+        reference["checked_at"] = "2026-09-20T00:30:00+14:00"
+        render_itinerary.validate_data(data)
+
     def test_to_recheck_readiness_requires_action_link(self) -> None:
         data = self.load_example()
         data["planning"]["readiness"][0]["action_links"] = []
