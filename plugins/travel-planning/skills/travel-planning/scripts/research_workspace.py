@@ -482,6 +482,11 @@ def validate_source_snapshot(snapshot: dict[str, Any]) -> None:
         expires_at = datetime.fromisoformat(str(freshness["expires_at"]).replace("Z", "+00:00"))
     except ValueError as error:
         raise WorkspaceError(f"酒旅快照 {snapshot_id} 的时间格式无效") from error
+    if (checked_at.utcoffset() is None) != (expires_at.utcoffset() is None):
+        raise WorkspaceError(
+            f"Snapshot {snapshot_id} checked_at/expires_at must both include UTC offsets "
+            "or both omit them; add explicit offsets to identify the intended instants"
+        )
     if expires_at <= checked_at:
         raise WorkspaceError(f"酒旅快照 {snapshot_id} 的 expires_at 必须晚于 checked_at")
     items = snapshot.get("items")
