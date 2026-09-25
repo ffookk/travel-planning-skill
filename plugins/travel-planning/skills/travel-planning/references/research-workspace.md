@@ -147,4 +147,6 @@ python3 skills/travel-planning/scripts/assemble_itinerary.py \
 
 通用装配器从 `collections` 声明加载 `results/` 或 `state/` 中的对象，按稳定 ID 选择和绑定，生成 `artifacts/itinerary.json`。研究状态变化、选定路线不一致、实体缺失、快照冲突或事件 ID 重复都会停止装配。完整字段合同见 `schemas/itinerary-plan.schema.json`。
 
+Assembly input paths must resolve inside the selected workspace, including collection files, task results, source snapshots, source JSONL files, and the default plan and research state. Relative paths, internal absolute paths, and symlinks whose resolved targets stay inside the workspace remain supported. Task IDs follow the workspace contract: 1–64 lowercase letters, digits, underscores or hyphens, starting with a letter or digit. An explicitly supplied `--plan` may be outside the workspace; `--output` remains caller-selected. These explicit options do not permit the plan's referenced inputs to escape the workspace. Keep the workspace stable during assembly; this check does not isolate concurrent filesystem writers.
+
 主 Agent 只载入合并后的必要摘要，需要证据时按 `task_id`、`source_id` 或 `record_id` 定向读取。二进制文档先看元数据和摘要，再决定是否打开。
