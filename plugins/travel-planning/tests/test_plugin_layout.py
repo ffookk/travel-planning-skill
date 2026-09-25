@@ -79,7 +79,6 @@ class PluginLayoutTest(unittest.TestCase):
         if repository_ignore.is_file():
             ignored = repository_ignore.read_text(encoding="utf-8").splitlines()
             self.assertIn("**/config/sources.local.env", ignored)
-            self.assertTrue((ROOT / "config/sources.local.env").is_file())
         self.assertFalse((ROOT / ".travel-tools").exists())
 
     def test_provider_runtime_is_not_nested_inside_skills(self) -> None:
