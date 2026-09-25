@@ -610,10 +610,12 @@ def render_checkpoints(
             )
         if index == last_index:
             exit_label = f'{execution.get("leave_by")} 前离开' if execution.get("leave_by") else "出口"
+            exit_query = exit_point.get("location_query")
+            exit_detail = f"<small>{esc(exit_query)}</small>" if exit_query else ""
             exit_html = (
                 f'<div class="checkpoint-endpoint checkpoint-exit"><span>{esc(exit_label)}</span>'
                 f'<strong>{esc(exit_point.get("name"))}</strong>'
-                f'{f"<small>{esc(exit_point.get("location_query"))}</small>" if exit_point.get("location_query") else ""}</div>'
+                f'{exit_detail}</div>'
             )
         checkpoint_meal = meals.get(str(point.get("meal_id") or "")) if point.get("meal_id") else None
         meal_html = ""
