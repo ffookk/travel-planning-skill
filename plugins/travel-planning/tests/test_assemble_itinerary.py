@@ -5,6 +5,7 @@ import importlib.util
 import json
 import tempfile
 import unittest
+from copy import deepcopy
 from pathlib import Path
 
 
@@ -141,6 +142,104 @@ class AssembleItineraryTest(unittest.TestCase):
         write_json(self.plan_path, self.plan)
         with self.assertRaisesRegex(assemble_itinerary.AssemblyError, "缺少选定实体"):
             assemble_itinerary.assemble(self.workspace, self.plan_path)
+
+    def assemble_lodging(self, item: dict) -> dict:
+        task_path = self.workspace / "results" / "stay-food.json"
+        write_json(task_path, {
+            "task_id": "stay-food",
+            "source_snapshot_ids": [],
+            "entities": {"lodging_options": [item]},
+        })
+        self.plan["collections"]["lodging_options"] = {
+            "task": "stay-food", "path": "entities.lodging_options", "ids": [item["id"]],
+        }
+        self.plan["days"][0]["events"].append({
+            "id": "event-hotel", "type": "lodging", "lodging_id": item["id"],
+            "title": "Example Hotel", "time": "18:00",
+        })
+        write_json(self.plan_path, self.plan)
+        original_task = task_path.read_bytes()
+        original_plan = self.plan_path.read_bytes()
+
+        result = assemble_itinerary.assemble(self.workspace, self.plan_path)
+
+        self.assertEqual(task_path.read_bytes(), original_task)
+        self.assertEqual(self.plan_path.read_bytes(), original_plan)
+        lodging = result["planning"]["lodging_options"][0]
+        self.assertEqual(result["days"][0]["events"][-1]["lodging_id"], lodging["id"])
+        return lodging
+
+    def test_missing_lodging_verification_remains_to_recheck(self) -> None:
+        lodging = self.assemble_lodging({"id": "hotel-1", "name": "Example Hotel"})
+
+        self.assertEqual(lodging["location_verification"], {"status": "to_recheck"})
+
+    def test_lodging_poi_timestamp_does_not_establish_identity_verification(self) -> None:
+        location = {
+            "physical_address": "1 Example Street",
+            "coordinates": "120.0,30.0",
+            "poi_verified_at": "2026-09-18",
+        }
+        lodging = self.assemble_lodging({
+            "id": "hotel-1", "name": "Example Hotel", "location": location,
+            "source_ids": ["map-source"],
+        })
+
+        self.assertEqual(lodging["location_verification"], {"status": "to_recheck"})
+        self.assertEqual(lodging["location"], location)
+        self.assertEqual(lodging["source_ids"], ["map-source"])
+
+    def test_keeps_pending_lodging_verification_and_its_evidence(self) -> None:
+        verification = {
+            "status": "to_recheck", "checked_at": "2026-09-19",
+            "method": "Address comparison", "source_ids": ["hotel-source"],
+            "reason": "The property name matches but its district is unresolved.",
+        }
+        lodging = self.assemble_lodging({
+            "id": "hotel-1", "name": "Example Hotel",
+            "location": {"poi_verified_at": "2026-09-20"},
+            "location_verification": verification,
+        })
+
+        self.assertEqual(lodging["location_verification"], verification)
+
+    def test_keeps_verified_lodging_conclusion_without_replacing_evidence(self) -> None:
+        verification = {
+            "status": "verified", "checked_at": "2026-09-17",
+            "method": "Compared full name, city, district, address and coordinates",
+            "source_ids": ["official-hotel", "map-source"],
+        }
+        lodging = self.assemble_lodging({
+            "id": "hotel-1", "name": "Example Hotel",
+            "location": {"poi_verified_at": "2026-09-20"},
+            "source_ids": ["quote-source"],
+            "location_verification": verification,
+        })
+
+        self.assertEqual(lodging["location_verification"], verification)
+
+    def test_normalizing_lodging_preserves_input_and_does_not_share_evidence(self) -> None:
+        item = {
+            "id": "hotel-1", "name": "Example Hotel",
+            "location_verification": {
+                "source_ids": ["map-source"],
+                "checked_at": "2026-09-19",
+                "evidence": {"address_match": False},
+            },
+        }
+        original = deepcopy(item)
+
+        lodging = assemble_itinerary.normalize_lodging(
+            item, assemble_itinerary.default_settings(self.plan),
+        )
+
+        self.assertEqual(lodging["location_verification"], {
+            **original["location_verification"], "status": "to_recheck",
+        })
+        self.assertEqual(item, original)
+        lodging["location_verification"]["source_ids"].append("another-source")
+        lodging["location_verification"]["evidence"]["address_match"] = True
+        self.assertEqual(item, original)
 
     def test_deep_merge_replaces_lists_and_merges_objects(self) -> None:
         result = assemble_itinerary.deep_merge(

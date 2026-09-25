@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build an installable local-marketplace ZIP from files not ignored by Git."""
+"""Build a marketplace ZIP with Git inclusion and private runtime path guards."""
 
 from __future__ import annotations
 
@@ -17,6 +17,14 @@ DEFAULT_PLUGIN_DIR = Path("plugins/travel-planning")
 DEFAULT_MARKETPLACE_FILE = Path(".agents/plugins/marketplace.json")
 DEFAULT_OUTPUT = Path("output/travel-planning-marketplace.zip")
 DEFAULT_BUNDLE_NAME = "travel-planning-marketplace"
+PRIVATE_DIRECTORIES = frozenset({
+    ".travel-research", ".travel-tools", ".playwright-cli", ".cache",
+    "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules",
+})
+PRIVATE_FILENAMES = frozenset({
+    "cookies.json", "cookies.txt", "search-tokens.json", "service.pid",
+    "storage-state.json", "storage_state.json",
+})
 
 
 def parse_args() -> argparse.Namespace:
@@ -46,7 +54,76 @@ def repository_relative(path: Path, argument_name: str) -> Path:
     try:
         return resolved.relative_to(REPOSITORY_ROOT)
     except ValueError as error:
-        raise SystemExit(f"{argument_name} must stay inside {REPOSITORY_ROOT}") from error
+        raise SystemExit(f"{argument_name} must stay inside the repository") from error
+
+
+def is_private_runtime_path(path: Path) -> bool:
+    """Reject known private paths, independently of Git's tracking/ignore state.
+
+    This is a path policy, not a content-complete secret detector.
+    """
+    parts = tuple(part.casefold() for part in path.parts)
+    if any(part in PRIVATE_DIRECTORIES for part in parts):
+        return True
+    name = parts[-1] if parts else ""
+    if name in PRIVATE_FILENAMES or name.startswith("sources.local.env"):
+        return True
+    if name != "sources.example.env" and (
+        name == ".env" or ".env." in name or name.endswith(".env")
+    ):
+        return True
+    return name.endswith((".log", ".pid", ".pyc", ".pyo")) or ".log." in name
+
+
+def validate_package_files(files: list[Path]) -> None:
+    """Validate every path and symlink before creating any archive output."""
+    included = set(files)
+    for relative_path in files:
+        def refuse(reason: str) -> None:
+            raise SystemExit(f"Refusing to package {relative_path.as_posix()}: {reason}")
+
+        if relative_path.is_absolute() or ".." in relative_path.parts:
+            raise SystemExit("Package entries must be repository-relative paths")
+        if is_private_runtime_path(relative_path):
+            refuse("private runtime path")
+
+        # Walk each link component so an intermediate private target cannot be
+        # hidden by another symlink. Absolute links also expose host paths and
+        # are not portable, even when their current target is inside the repo.
+        pending = list(relative_path.parts)
+        resolved = REPOSITORY_ROOT
+        links = 0
+        while pending:
+            component = pending.pop(0)
+            if component == ".":
+                continue
+            if component == "..":
+                if resolved == REPOSITORY_ROOT:
+                    refuse("symlink target leaves the repository")
+                resolved = resolved.parent
+                continue
+            candidate = resolved / component
+            if is_private_runtime_path(candidate.relative_to(REPOSITORY_ROOT)):
+                refuse("symlink target is a private runtime path")
+            if candidate.is_symlink():
+                links += 1
+                if links > 40:
+                    refuse("symlink target is cyclic or too deeply nested")
+                target = Path(os.readlink(candidate))
+                if target.is_absolute():
+                    refuse("absolute symlink target")
+                pending = list(target.parts) + pending
+            else:
+                resolved = candidate
+
+        if links:
+            if not resolved.exists():
+                refuse("symlink target does not exist")
+            target_relative = resolved.relative_to(REPOSITORY_ROOT)
+            if target_relative not in included and not (
+                resolved.is_dir() and any(target_relative in path.parents for path in included)
+            ):
+                refuse("symlink target is outside the package file set")
 
 
 def package_files(plugin_dir: Path) -> list[Path]:
@@ -71,7 +148,7 @@ def package_files(plugin_dir: Path) -> list[Path]:
     return sorted(
         path
         for path in candidates
-        if (REPOSITORY_ROOT / path).is_file() or (REPOSITORY_ROOT / path).is_symlink()
+        if (REPOSITORY_ROOT / path).is_symlink() or (REPOSITORY_ROOT / path).is_file()
     )
 
 
@@ -86,17 +163,18 @@ def add_symlink(archive: zipfile.ZipFile, source: Path, archive_name: Path) -> N
 def build_archive(plugin_dir: Path, output: Path, bundle_name: str) -> int:
     source_root = REPOSITORY_ROOT / plugin_dir
     if not source_root.is_dir():
-        raise SystemExit(f"plugin directory does not exist: {source_root}")
+        raise SystemExit(f"plugin directory does not exist: {plugin_dir}")
     if not (source_root / ".codex-plugin/plugin.json").is_file():
-        raise SystemExit(f"missing plugin manifest: {source_root / '.codex-plugin/plugin.json'}")
+        raise SystemExit(f"missing plugin manifest: {plugin_dir / '.codex-plugin/plugin.json'}")
     if not (REPOSITORY_ROOT / DEFAULT_MARKETPLACE_FILE).is_file():
         raise SystemExit(
-            f"missing marketplace catalog: {REPOSITORY_ROOT / DEFAULT_MARKETPLACE_FILE}"
+            f"missing marketplace catalog: {DEFAULT_MARKETPLACE_FILE}"
         )
 
     files = package_files(plugin_dir)
     if not files:
         raise SystemExit(f"no packageable files found under {plugin_dir}")
+    validate_package_files(files)
 
     output_path = REPOSITORY_ROOT / output
     output_path.parent.mkdir(parents=True, exist_ok=True)
