@@ -5,10 +5,17 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
+
+
+COST_SPEC = importlib.util.spec_from_file_location("travel_cost_contract", Path(__file__).with_name("cost_contract.py"))
+assert COST_SPEC and COST_SPEC.loader
+cost_contract = importlib.util.module_from_spec(COST_SPEC)
+COST_SPEC.loader.exec_module(cost_contract)
 
 
 ALLOWED_ACTION_TYPES = {
@@ -108,7 +115,7 @@ def money(value: Any) -> str:
 
 def normalize_cost(item: dict[str, Any]) -> dict[str, Any]:
     role = str(item.get("pricing_role") or "optional")
-    return {
+    result = {
         "name": item.get("name"),
         "kind": item.get("kind") or ("base_ticket" if role == "baseline" else "optional_experience"),
         "unit_price": money(item.get("unit_price_cny")),
@@ -119,13 +126,40 @@ def normalize_cost(item: dict[str, Any]) -> dict[str, Any]:
         "status": item.get("status") or "to_recheck",
         "source_ids": item.get("source_ids") or [],
     }
+    price = item.get("price", item.get("unit_price"))
+    if cost_contract.structured(price):
+        try:
+            result["unit_price"] = cost_contract.quote_display(price)
+            quantity = item.get("quantity")
+            if quantity is not None:
+                cost_contract.positive_count(quantity)
+            result["quantity"] = quantity if quantity is not None else "待核"
+            supplied = item.get("subtotal")
+            if isinstance(supplied, str) and supplied.strip():
+                result["subtotal"] = supplied
+            else:
+                result["subtotal"] = cost_contract.estimated_subtotal(price, quantity) if quantity is not None else "数量待核"
+        except ValueError as error:
+            raise AssemblyError(str(error)) from None
+        result["price_evidence"] = deepcopy(price)
+    if "alternative_group" in item:
+        result["alternative_group"] = item["alternative_group"]
+    return result
 
 
 def normalize_route(item: dict[str, Any], defaults: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(item)
     cost = result.get("cost")
     if isinstance(cost, dict):
-        if cost.get("amount_yuan_for_4") is not None:
+        if "cost_quote" in result and result["cost_quote"] != cost:
+            raise AssemblyError("Transport cost_quote conflicts with the supplied cost")
+        result["cost_quote"] = deepcopy(cost)
+        if cost_contract.structured(cost):
+            try:
+                result["cost"] = cost_contract.quote_display(cost)
+            except ValueError as error:
+                raise AssemblyError(str(error)) from None
+        elif cost.get("amount_yuan_for_4") is not None:
             result["cost"] = f"4人约 {cost['amount_yuan_for_4']} 元（{cost.get('status', '估算')}）"
         elif cost.get("amount_yuan_per_person") is not None:
             result["cost"] = f"约 {cost['amount_yuan_per_person']} 元/人（{cost.get('status', '估算')}）"
@@ -153,7 +187,15 @@ def normalize_intercity(item: dict[str, Any], defaults: dict[str, Any]) -> dict[
     )
     cost = result.get("cost")
     if isinstance(cost, dict):
-        if cost.get("amount_yuan_for_4") is not None:
+        if "cost_quote" in result and result["cost_quote"] != cost:
+            raise AssemblyError("Transport cost_quote conflicts with the supplied cost")
+        result["cost_quote"] = deepcopy(cost)
+        if cost_contract.structured(cost):
+            try:
+                result["cost"] = cost_contract.quote_display(cost)
+            except ValueError as error:
+                raise AssemblyError(str(error)) from None
+        elif cost.get("amount_yuan_for_4") is not None:
             result["cost"] = f"4人{cost['amount_yuan_for_4']}（{cost.get('status', '待复核')}）"
         elif cost.get("amount_yuan_per_adult") is not None:
             result["cost"] = f"约¥{cost['amount_yuan_per_adult']}/人（{cost.get('status', '待复核')}）"
