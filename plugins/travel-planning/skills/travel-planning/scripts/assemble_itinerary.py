@@ -594,6 +594,10 @@ def assemble(workspace: Path, plan_path: Path) -> dict[str, Any]:
     planning = deep_merge(planning, plan.get("planning") or {})
     return {
         "trip": deepcopy(plan["trip"]), "workflow": deepcopy(plan["workflow"]),
+        "research_context": {
+            "schema_version": "itinerary-research-context/v1",
+            "research_state_sha256": plan["research_state_sha256"],
+        },
         "route_proposals": deepcopy(plan.get("route_proposals") or []),
         "planning": planning, "days": days,
         "sources": collect_sources(workspace, plan.get("source_ids")),

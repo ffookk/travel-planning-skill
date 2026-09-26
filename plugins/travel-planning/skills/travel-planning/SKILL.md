@@ -30,6 +30,7 @@ description: 调研和规划需要可靠动态信息的旅行，比较路线与�
 | 检查境外、行李、特殊人群和分阶段复核 | [行前就绪检查](references/trip-readiness.md) |
 | 创建或修改 `itinerary.json` | [行程数据结构](references/itinerary-schema.md) |
 | 渲染或检查页面 | [交互页面规范](references/interactive-page.md) |
+| Final delivery, including private offline delivery | [Audited final delivery](references/final-delivery.md) |
 
 深度规划开始前运行真实数据源预检，并按路线追加必需来源：
 
@@ -77,11 +78,21 @@ python3 skills/travel-planning/scripts/research_sources.py preflight \
 
 确定性审查至少运行两次：候选事件流完成后检查硬时间与交通，动态候选绑定完成后执行最终审查；随后由独立审查 Agent 检查事实冲突和语义可执行性。阻断项清零后才能渲染最终页面：
 
+The following existing commands support diagnostics and previews. The raw renderer does not enforce the audit result; its output is not an audited final delivery. The finalizer below must be the last writer of the delivered HTML, and its matching receipt must accompany that file.
+
 ```bash
 python3 skills/travel-planning/scripts/assemble_itinerary.py --workspace ".travel-research/<trip-id>"
 python3 skills/travel-planning/scripts/audit_itinerary.py ".travel-research/<trip-id>/artifacts/itinerary.json" --output ".travel-research/<trip-id>/artifacts/audit.json"
 python3 skills/travel-planning/scripts/render_itinerary.py ".travel-research/<trip-id>/artifacts/itinerary.json" ".travel-research/<trip-id>/artifacts/itinerary.html"
 ```
+
+For final delivery, use the [audited final-delivery entry point](references/final-delivery.md). The existing audit and renderer commands remain available for diagnostics and previews. Set `workflow.phase="final"` explicitly after resolving the required evidence; the finalizer does not promote drafts. Assembled itineraries require their matching workspace, and any used research conflicts require bound decisions:
+
+```bash
+python3 skills/travel-planning/scripts/finalize_itinerary.py ".travel-research/<trip-id>/artifacts/itinerary.json" ".travel-research/<trip-id>/artifacts/itinerary.html" --workspace ".travel-research/<trip-id>"
+```
+
+When the user requests no automatic external resource loads, add `--private-offline` to this finalizer command with an offline-capable renderer installed. Do not substitute a raw offline preview for audited final delivery. Keep the complete itinerary JSON, HTML, and receipt private unless the user intentionally chooses recipients; offline output retains private trip details. A public-facing highlights summary requires a separate explicit selection and review of the text to be shared.
 
 ## 页面与交付
 
