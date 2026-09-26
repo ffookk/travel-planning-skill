@@ -17,6 +17,12 @@ assert SPEC and SPEC.loader
 render_itinerary = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(render_itinerary)
 
+
+COST_SPEC = importlib.util.spec_from_file_location("travel_cost_contract", Path(__file__).with_name("cost_contract.py"))
+assert COST_SPEC and COST_SPEC.loader
+cost_contract = importlib.util.module_from_spec(COST_SPEC)
+COST_SPEC.loader.exec_module(cost_contract)
+
 REPORT_PHRASES = ("综合考虑", "总体而言", "值得一去", "丰富体验", "感受当地", "合理安排", "行程亮点")
 TRANSPORT_COVERAGE_SORTS = {2, 3, 4, 6, 7}
 STRONG_AVAILABILITY_CLAIMS = {"available", "confirmed", "verified", "booked", "有房", "可订", "已确认"}
@@ -70,6 +76,9 @@ def transport_coverage_key(snapshot: dict[str, Any]) -> str | None:
 def audit(data: dict[str, Any]) -> dict[str, Any]:
     blocking: list[str] = []
     warnings: list[str] = []
+    cost_blocking, cost_warnings = cost_contract.audit_costs(data)
+    blocking.extend(cost_blocking)
+    warnings.extend(cost_warnings)
     try:
         render_itinerary.validate_data(data)
     except ValueError as error:

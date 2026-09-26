@@ -88,6 +88,8 @@
 - 页面预算从事件 `cost_items[]` 派生，不把 `planning.budget.items[]` 维护为另一套真值。保留聚合预算时注明生成时间和派生范围。
 - `budget.items[].status` 使用 `confirmed`、`estimated` 或 `optional`；总价说明按人还是按全体及未计入项。
 
+Structured currency and party-size inputs are described in [Cost scope](cost-scope.md); legacy CNY fields remain supported.
+
 ## 交通与住宿
 
 - 交通事件通过 `route_id` 引用 `transport_edges[]`，跨城交通可引用 `intercity_options[].id`。每条交通边记录出口到入口的门到门路线。
