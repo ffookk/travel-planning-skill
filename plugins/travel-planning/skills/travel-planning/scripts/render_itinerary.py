@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import argparse
 import html
 import json
@@ -39,6 +40,10 @@ PROVIDER_DISPLAY_NAMES = {
     "xiaohongshu": "小红书",
 }
 FRONTEND_ASSET_ROOT = Path(__file__).resolve().parents[1] / "assets" / "frontend"
+SCHEDULE_SPEC = importlib.util.spec_from_file_location("schedule_validation", Path(__file__).with_name("schedule_validation.py"))
+assert SCHEDULE_SPEC and SCHEDULE_SPEC.loader
+schedule_validation = importlib.util.module_from_spec(SCHEDULE_SPEC)
+SCHEDULE_SPEC.loader.exec_module(schedule_validation)
 
 
 def load_frontend_asset(name: str, closing_tag: str) -> str:
@@ -603,7 +608,7 @@ def render_checkpoints(
                 checkpoint_meal, restaurants, restaurant_snapshots, meal_route_evaluations,
             )
         rows.append(f'''<li class="checkpoint checkpoint-{esc(point.get('kind') or 'visit')}">
-          <div class="checkpoint-time"><strong>{esc(point.get("time") or "顺序")}</strong>{f'<span>– {esc(point.get("end_time"))}</span>' if point.get("end_time") else ''}</div>
+          <div class="checkpoint-time"{' style="overflow-wrap:anywhere"' if schedule_validation.dated(point) else ''}><strong>{esc(schedule_validation.display_time(point) or "顺序")}</strong>{f'<span>– {esc(schedule_validation.display_time(point, end=True))}</span>' if point.get("end_time") or point.get("end_at") else ''}</div>
           <div class="checkpoint-content">{entry_html}{f'<p class="checkpoint-move">从上一点：{esc(move_text)}</p>' if move_text else ''}
             <div class="checkpoint-title"><strong>{esc(point.get("name"))}</strong><em>{requirement}</em></div>
             {f'<p class="checkpoint-instruction">{esc(point.get("instruction"))}</p>' if point.get("instruction") else ''}
@@ -1110,6 +1115,7 @@ def validate_embedded_meal(
 
 def validate_data(data: dict[str, Any]) -> None:
     """校验研究数据与最终日程之间的引用关系。"""
+    schedule_validation.temporal_fields(data)
     trip, days = data.get("trip") or {}, data.get("days") or []
     if not trip.get("title") or not days:
         raise ValueError("必须提供 trip.title，并且 days 至少包含一天行程")
@@ -1273,6 +1279,8 @@ def validate_data(data: dict[str, Any]) -> None:
                     raise ValueError(f"景点事件“{title}”必须提供含必达点的 execution.checkpoints")
                 for point_index, point in enumerate(checkpoints):
                     required_point_fields = {"id", "order", "time", "end_time", "kind", "name", "required", "instruction"}
+                    if schedule_validation.dated(point):
+                        required_point_fields = (required_point_fields - {"time", "end_time"}) | {"start_at", "end_at"}
                     missing_point = sorted(field for field in required_point_fields if field not in point or point.get(field) in (None, ""))
                     if missing_point:
                         raise ValueError(f"景点事件“{title}”的 checkpoint[{point_index}] 缺少字段：{', '.join(missing_point)}")
@@ -1664,11 +1672,11 @@ def render_overview_event(
             overview_fact("提醒", event.get("tips")),
             overview_fact("费用", event.get("cost_summary") or event.get("cost")),
         ])
-    time_text = f'<strong>{esc(event.get("time") or "—")}</strong>'
-    if event.get("end_time"):
-        time_text += f'<span>{esc(event.get("end_time"))}</span>'
+    time_text = f'<strong>{esc(schedule_validation.display_time(event) or "—")}</strong>'
+    if event.get("end_time") or event.get("end_at"):
+        time_text += f'<span>{esc(schedule_validation.display_time(event, end=True))}</span>'
     return f'''<tr class="overview-event overview-{esc(kind)}">
-      <td class="overview-time">{time_text}</td>
+      <td class="overview-time"{' style="white-space:normal;overflow-wrap:anywhere"' if schedule_validation.dated(event) else ''}>{time_text}</td>
       <td class="overview-place"><span class="overview-type">{esc(label)}</span><strong>{esc(location)}</strong>{f'<small>{esc(address)}</small>' if address else ''}</td>
       <td><dl class="overview-facts">{"".join(facts)}</dl></td>
     </tr>'''
@@ -1859,10 +1867,10 @@ def render_event(
           {f'<section><h4>执行细节</h4>{details}</section>' if details else ''}
           {f'<section><h4>注意事项</h4>{tips}</section>' if tips else ''}
         </div>'''
-    end_time = f'<span class="end-time">– {esc(event.get("end_time"))}</span>' if event.get("end_time") else ""
+    end_time = f'<span class="end-time">– {esc(schedule_validation.display_time(event, end=True))}</span>' if event.get("end_time") or event.get("end_at") else ""
     return f'''<article class="event event-{esc(kind)}" id="event-{idx}">
       <div class="rail"><span class="dot">{icon}</span></div>
-      <div class="event-body"><div class="time"><strong>{esc(event.get("time"))}</strong>{end_time}</div>
+      <div class="event-body"><div class="time"{' style="flex-wrap:wrap;overflow-wrap:anywhere"' if schedule_validation.dated(event) else ''}><strong>{esc(schedule_validation.display_time(event))}</strong>{end_time}</div>
       <div class="card"><div class="card-top"><span class="type-label">{label}</span><div class="card-tools">{weather_html}{map_html}</div></div>
         <h3>{esc(event.get("title"))}</h3>{subtitle}{image_html}
         {context_html}{admission_html}{checkpoint_html}{route_map_html}{inventory_html}{cost_html}{community_html}{actions_html}{notes_html}</div>

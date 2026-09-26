@@ -40,6 +40,25 @@
 
 `planning` 保存规范化研究和可追溯关系，`days[].events[]` 是旅行者实际执行的逐日事件流。最终页面不能要求用户回到独立研究区拼接信息。
 
+### Optional dated event times and feasibility checks
+
+Existing `day.date` plus local `time` / `end_time` values remain supported. An event or checkpoint can instead supply paired `start_at` and `end_at` ISO date-times with explicit UTC offsets (or `Z`). These instants are authoritative for chronology and elapsed duration, and the renderer displays their dates and offsets. If local display fields are also supplied, they must match the corresponding dated clock values. `day.date` is the event's local departure date; the arrival may be on another date or have an earlier local clock. For example:
+
+```json
+{
+  "id": "overnight-train", "type": "transport", "title": "Overnight journey",
+  "start_at": "2026-10-17T23:30:00+08:00",
+  "end_at": "2026-10-18T06:00:00+08:00",
+  "timezone": "Asia/Shanghai"
+}
+```
+
+Optional IANA `timezone` values inherit from trip to day to event; `end_timezone` overrides the arrival zone for international travel. Explicit offsets must agree with the supplied IANA zone. With only local clocks, a zone resolves an unambiguous time, while a daylight-saving gap or repeated local time requires explicit dated offsets. The machine's local timezone is never assumed. Known instants are compared across all days in event order; boundaries involving timezone-free events produce a recheck warning instead of an assumed conversion. Overnight attractions require dated checkpoints. The assembler's automatic attraction checkpoint allocation remains a same-day recipe; an attraction assembly specification supplies dated event fields through its existing `overrides`, with the complete researched checkpoint list in `overrides.execution.checkpoints`. Match or clear the inherited local display times in those overrides. Cross-date or offset-changing journeys carry a manual meal-coverage reminder; ordinary restaurant time-window and evidence checks remain active.
+
+Routes can provide finite, nonnegative `door_to_door_minutes` to check whether their transport event is long enough. Without this field, the audit accepts only exact duration strings such as `120 分钟` or `120 minutes`; ranges, approximate wording, and compound descriptions require manual rechecking. The audit does not invent waiting, transfer, or walking buffers absent from the researched duration.
+
+Attractions can provide `admission.last_entry_at` and nonempty `admission.opening_windows` arrays of dated `{ "start_at": "…", "end_at": "…" }` intervals, optionally with an IANA `admission.timezone`. Arrival must be no later than the cutoff, and the visit must fit within one opening interval (arrival exactly at closing is too late). These structured values take precedence over display text. Otherwise, only a single exact `HH:MM` cutoff and a same-day `HH:MM-HH:MM` opening interval are checked. Seasonal prose, split or overnight opening hours, and unknown dates/zones remain recheck warnings until explicit windows are supplied. These checks use stored research and do not verify live operations or transport conditions.
+
 ## 基础与工作流
 
 - 必填字段为 `trip.title`、`days[]`、`day.date`、`day.events[]`、`event.id`、`event.time`、`event.type` 和 `event.title`。`confirmed_planning` 与 `final` 阶段的事件 ID 必须唯一。
