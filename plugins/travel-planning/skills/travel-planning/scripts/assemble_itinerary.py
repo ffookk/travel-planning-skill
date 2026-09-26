@@ -7,6 +7,8 @@ import argparse
 import hashlib
 import json
 from copy import deepcopy
+from datetime import date
+from decimal import Decimal, InvalidOperation, localcontext
 from pathlib import Path
 from typing import Any
 
@@ -173,15 +175,97 @@ def normalize_intercity(item: dict[str, Any], defaults: dict[str, Any]) -> dict[
     return result
 
 
+def lodging_amount(value: Any, path: str) -> Decimal | None:
+    """Read a CNY amount without treating a zero quote as missing."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise AssemblyError(f"{path} must be a finite nonnegative amount")
+    try:
+        amount = Decimal(str(value))
+    except InvalidOperation:
+        raise AssemblyError(f"{path} must be a finite nonnegative amount") from None
+    if not amount.is_finite() or amount < 0:
+        raise AssemblyError(f"{path} must be a finite nonnegative amount")
+    if amount == 0:
+        return Decimal(0)
+    if amount.adjusted() >= 1000 or amount.as_tuple().exponent < -1000:
+        raise AssemblyError(f"{path} must fit within 1000 integer and fractional digits")
+    return amount
+
+
+def lodging_count(value: Any, path: str) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise AssemblyError(f"{path} must be a positive integer")
+    return value
+
+
+def lodging_price(item: dict[str, Any]) -> str:
+    """Build presentation from explicit evidence without changing the quote."""
+    quote = item.get("quote")
+    if quote is None:
+        quote = {}
+    if not isinstance(quote, dict):
+        raise AssemblyError("lodging.quote must be an object")
+    rate = lodging_amount(quote.get("amount_per_room_per_night_cny"), "lodging.quote.amount_per_room_per_night_cny")
+    legacy_total = lodging_amount(quote.get("two_rooms_two_nights_estimate_cny"), "lodging.quote.two_rooms_two_nights_estimate_cny")
+    rooms = None
+    for field in ("room_requirement", "requested_occupancy"):
+        requirement = item.get(field)
+        if requirement is None:
+            continue
+        if not isinstance(requirement, dict):
+            raise AssemblyError(f"lodging.{field} must be an object")
+        count = lodging_count(requirement.get("rooms"), f"lodging.{field}.rooms")
+        if count is not None:
+            if rooms is not None and rooms != count:
+                raise AssemblyError("Lodging room counts must agree")
+            rooms = count
+    nights = lodging_count(item.get("nights"), "lodging.nights")
+    if item.get("check_in_date") is not None and item.get("check_out_date") is not None:
+        try:
+            check_in = date.fromisoformat(item["check_in_date"])
+            check_out = date.fromisoformat(item["check_out_date"])
+            if check_in.isoformat() != item["check_in_date"] or check_out.isoformat() != item["check_out_date"]:
+                raise ValueError
+        except (TypeError, ValueError):
+            raise AssemblyError("Lodging check_in_date and check_out_date must be YYYY-MM-DD dates") from None
+        date_nights = (check_out - check_in).days
+        if date_nights <= 0 or (nights is not None and nights != date_nights):
+            raise AssemblyError("Lodging nights must agree with a positive check-in/check-out date span")
+        nights = date_nights
+
+    supplied_price = item.get("price")
+    if isinstance(supplied_price, dict):
+        supplied_price = supplied_price.get("display")
+    if isinstance(supplied_price, (int, float)):
+        lodging_amount(supplied_price, "lodging.price")
+        return str(supplied_price)
+    for display in (supplied_price, quote.get("display")):
+        if isinstance(display, str) and display.strip():
+            return display
+
+    def amount_text(amount: Decimal) -> str:
+        text = format(amount, "f")
+        return text.rstrip("0").rstrip(".") if "." in text else text
+
+    parts = [f"快照约¥{amount_text(rate)}/间夜"] if rate is not None else []
+    if legacy_total is not None and rooms in (None, 2) and nights in (None, 2):
+        parts.append(f"2间2晚约¥{amount_text(legacy_total)}")
+    elif rate is not None and rooms is not None and nights is not None:
+        with localcontext() as context:
+            context.prec = max(28, len(rate.as_tuple().digits) + len(str(rooms)) + len(str(nights)))
+            total = rate * rooms * nights
+        parts.append(f"{rooms}间{nights}晚规划估算约¥{amount_text(total)}（按每间夜单价计算，非供应商总价）")
+    return "；".join(parts) or "待重新查询"
+
+
 def normalize_lodging(item: dict[str, Any], defaults: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(item)
-    quote = result.get("quote") or {}
     result["area"] = item.get("area_anchor") or item.get("district")
-    result["price"] = (
-        f"快照约¥{quote.get('amount_per_room_per_night_cny')}/间夜；"
-        f"2间2晚约¥{quote.get('two_rooms_two_nights_estimate_cny')}"
-        if quote.get("amount_per_room_per_night_cny") is not None else "待重新查询"
-    )
+    result["price"] = lodging_price(item)
     result["luggage_storage"] = (item.get("luggage_storage") or {}).get("policy") or "入住前确认"
     location = item.get("location") or {}
     result["location_verification"] = {

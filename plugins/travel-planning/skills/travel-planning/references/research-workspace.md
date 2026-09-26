@@ -148,3 +148,9 @@ python3 skills/travel-planning/scripts/assemble_itinerary.py \
 通用装配器从 `collections` 声明加载 `results/` 或 `state/` 中的对象，按稳定 ID 选择和绑定，生成 `artifacts/itinerary.json`。研究状态变化、选定路线不一致、实体缺失、快照冲突或事件 ID 重复都会停止装配。完整字段合同见 `schemas/itinerary-plan.schema.json`。
 
 主 Agent 只载入合并后的必要摘要，需要证据时按 `task_id`、`source_id` 或 `record_id` 定向读取。二进制文档先看元数据和摘要，再决定是否打开。
+
+## Lodging price presentation
+
+For lodging price presentation, assembly preserves nonblank `price` text, `price.display`, or `quote.display` in that order. Otherwise, `quote.amount_per_room_per_night_cny` remains a unit price unless explicit positive integer counts are available: rooms from `room_requirement.rooms` or `requested_occupancy.rooms`, and nights from `nights` or a complete `check_in_date`/`check_out_date` pair of `YYYY-MM-DD` dates. Supplied counts must agree with each other and with any complete date span. Assembly does not infer occupancy from traveler counts or update the original quote, dates, or quantities.
+
+Calculated room × night amounts are labeled as planning estimates, not provider totals; taxes, fees, and varying nightly rates still require source verification. CNY quote amounts must be finite and nonnegative (numeric strings are accepted), and zero remains a valid amount. Nonzero amounts exceeding 1,000 integer or fractional digits are rejected before arithmetic or display expansion. The legacy `two_rooms_two_nights_estimate_cny` field retains its explicit two-room, two-night scope, even without a unit rate; it is displayed only when supplied quantities do not contradict that scope. Missing quantities never become two rooms or two nights by default.
