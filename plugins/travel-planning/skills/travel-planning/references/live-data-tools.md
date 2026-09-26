@@ -27,6 +27,12 @@ python3 skills/travel-planning/scripts/research_sources.py preflight \
 
 `preflight` 对插件 MCP 执行 `initialize`、`tools/list`、工具契约检查和只读上游探测，并验证飞猪、天气与小红书的真实运行态。状态使用 `ready`、`degraded` 或 `unavailable`；只有本次 `--require` 的来源未就绪时返回非零。`--skip-upstream` 只用于离线诊断，不能作为开始深度研究的依据。
 
+Provider subprocesses receive an explicit OS runtime environment (executable search paths, home/config/cache directories, locale, temporary directories, and desktop-session settings) plus only that provider's configured credentials. Unrelated environment variables, including unknown account tokens, are omitted by default. Existing provider config selection, credential precedence, and the AMap key alias are retained. This limits environment inheritance; it does not sandbox filesystem or network access, and retained home/config directories remain accessible to the runtime.
+
+If a runtime needs an additional proxy or certificate setting, `TRAVEL_PROVIDER_ENV_PASSTHROUGH` accepts a comma-separated list of variable names, for example `HTTPS_PROXY,NODE_EXTRA_CA_CERTS`. Only explicitly named existing values are forwarded. Do not put values or assignments in this list; each listed value is shared with the launched runtime. Provider credential names, configuration-control names, and common code-loader variables are reserved and cannot bypass provider separation through this setting. Prefer a per-command setting over a global shell setting.
+
+Wrapped HTTP, CLI, and MCP failures report fixed diagnostic categories and HTTP status codes where available. They do not return upstream error bodies, arbitrary stderr, request URLs, or connection exception text. Authorization failure, quota exhaustion, runtime unavailability, timeout, and empty successful results remain distinct. Text-based categories are best-effort hints, not proof of a provider's root cause. Successful query data and direct provider protocol output retain their existing contracts; this is not a claim that arbitrary provider output has been fully sanitized.
+
 可要求的来源为 `amap-maps`、`variflight-aviation`、`variflight-tripmatch`、`flyai`、`open-meteo` 和 `xiaohongshu`。只有涉及航班时要求 Aviation，铁路或空铁联运要求 Tripmatch，中国境内地图要求高德。`capabilities` 只表示适配器和配置存在，不表示实时健康。
 
 ## 查询与落盘边界

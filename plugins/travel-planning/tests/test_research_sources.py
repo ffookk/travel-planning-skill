@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 import tempfile
 import unittest
+import traceback
 from argparse import Namespace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+from urllib.error import HTTPError, URLError
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "skills" / "travel-planning" / "scripts" / "research_sources.py"
@@ -18,6 +21,39 @@ SPEC.loader.exec_module(research_sources)
 
 
 class ResearchSourcesTest(unittest.TestCase):
+    def test_http_helpers_withhold_remote_details_and_exception_chains(self) -> None:
+        for request in (research_sources.request_json, research_sources.post_json):
+            for error in (
+                HTTPError("https://example.test/?token=synthetic-secret", 403, "synthetic-secret", {}, io.BytesIO(b'{"error":"synthetic-secret"}')),
+                URLError("synthetic-secret"),
+            ):
+                with self.subTest(request=request.__name__, error=type(error).__name__):
+                    with patch.object(research_sources, "urlopen", side_effect=error):
+                        try:
+                            request("https://example.test/private", {"query": "synthetic-query"})
+                        except research_sources.SourceError as failure:
+                            diagnostic = traceback.format_exc()
+                            self.assertNotIn("synthetic-secret", diagnostic)
+                            self.assertNotIn("synthetic-query", str(failure))
+                        else:
+                            self.fail("Expected a categorized source failure")
+
+    def test_application_errors_do_not_repeat_upstream_fields(self) -> None:
+        with self.assertRaises(research_sources.SourceError) as raised:
+            research_sources.unwrap_xhs_response({"success": False, "code": "synthetic-secret", "error": "private account details"})
+        self.assertNotIn("synthetic-secret", str(raised.exception))
+        self.assertNotIn("private account details", str(raised.exception))
+        with patch.object(research_sources, "get_amap_key", return_value="synthetic-key"), patch.object(research_sources, "request_json", return_value={"status": "0", "info": "unauthorized synthetic-secret"}):
+            with self.assertRaises(research_sources.SourceError) as raised:
+                research_sources.amap_request("/test", {})
+        self.assertNotIn("synthetic-secret", str(raised.exception))
+        self.assertIn("authorization", str(raised.exception))
+
+    def test_preflight_does_not_echo_unexpected_runtime_exceptions(self) -> None:
+        result = research_sources._preflight_failure("synthetic-provider", "public_api", True, OSError("synthetic-secret"), research_sources.time.monotonic())
+        self.assertNotIn("synthetic-secret", json.dumps(result))
+        self.assertEqual(result["status"], "unavailable")
+
     def test_mcp_preflight_runs_handshake_and_read_only_smoke_query(self) -> None:
         with patch.object(
             research_sources,
