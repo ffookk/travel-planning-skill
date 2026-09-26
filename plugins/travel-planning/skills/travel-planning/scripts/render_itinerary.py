@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import html
+import html.parser
 import json
 import math
 import re
@@ -1910,7 +1911,7 @@ def render_day(
       {''.join(events) if events else '<p class="empty">这一天还没有安排。</p>'}</section>'''
 
 
-def build(data: dict[str, Any]) -> str:
+def _build_document(data: dict[str, Any]) -> str:
     validate_data(data)
     frontend_css = load_frontend_asset("itinerary-app.css", "style")
     frontend_js = load_frontend_asset("itinerary-app.js", "script")
@@ -1970,14 +1971,153 @@ html[data-itinerary-view="routes"] .sources,html[data-itinerary-view="routes"] .
 <script>{frontend_js}</script></body></html>'''
 
 
+class _PrivateOfflineExport(html.parser.HTMLParser):
+    """Turn generated markup into a static document with intentional links only."""
+
+    VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
+    OMIT_TAGS = {"script", "iframe", "object", "embed", "audio", "video", "source", "track", "link", "base"}
+    RESOURCE_ATTRS = {"src", "srcset", "data-src", "data-mobile-src", "poster", "background", "ping", "srcdoc"}
+    POLICY = (
+        "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; "
+        "img-src 'none'; frame-src 'none'; connect-src 'none'; object-src 'none'; "
+        "base-uri 'none'; form-action 'none'"
+    )
+    STYLE = """<style>
+body[data-export-profile="private-offline"] .offline-notice{margin:0;padding:12px 22px;background:#eaf3ec;color:#214c32;font-size:13px}
+body[data-export-profile="private-offline"] .image-strip,body[data-export-profile="private-offline"] .checkpoint-images{display:block;height:auto;min-height:0;padding:8px 10px}
+body[data-export-profile="private-offline"] .image-item{height:auto;min-height:0;margin:5px 0}
+body[data-export-profile="private-offline"] .image-item>a{height:auto}
+body[data-export-profile="private-offline"] .image-item figcaption{position:static;margin-top:3px;background:transparent;color:var(--muted);padding:0}
+.offline-image-description,.offline-wechat-details{font-size:12px;overflow-wrap:anywhere}
+</style>"""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=False)
+        self.parts: list[str] = []
+        self.omit_depth = 0
+        self.anchor_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if self.omit_depth:
+            if tag not in self.VOID_TAGS:
+                self.omit_depth += 1
+            return
+        values = dict(attrs)
+        classes = (values.get("class") or "").split()
+        if tag in self.OMIT_TAGS:
+            self.omit_depth = int(tag not in self.VOID_TAGS)
+            return
+        if tag == "button" and "data-wechat-account" in values:
+            details = values.get("title") or " · ".join(
+                value for value in (values.get("data-wechat-account"), values.get("data-wechat-menu")) if value
+            )
+            self.parts.append(f'<span class="offline-wechat-details">{esc(details)}</span>')
+            self.omit_depth = 1
+            return
+        if tag == "button" and "route-map-fullscreen" in classes:
+            self.omit_depth = 1
+            return
+        if tag == "img":
+            description = f'<span class="offline-image-description">{esc(values.get("alt") or "Image")} (image omitted in offline export)</span>'
+            url = values.get("src") or ""
+            if not self.anchor_depth and url.startswith("https://"):
+                description = f'<a href="{esc(url)}" target="_blank" rel="noopener noreferrer">{description} ↗</a>'
+            self.parts.append(description)
+            return
+        if tag == "meta" and (values.get("http-equiv") or "").casefold() == "refresh":
+            return
+        safe_attrs = []
+        for name, value in attrs:
+            if name.startswith("on") or name in self.RESOURCE_ATTRS:
+                continue
+            if name == "href" and (tag != "a" or not (value or "").startswith(("https://", "#"))):
+                continue
+            safe_attrs.append((name, value))
+        if tag == "body":
+            safe_attrs.append(("data-export-profile", "private-offline"))
+        attributes = "".join(f' {name}' if value is None else f' {name}="{esc(value)}"' for name, value in safe_attrs)
+        self.parts.append(f"<{tag}{attributes}>")
+        if tag == "a":
+            self.anchor_depth += 1
+        elif tag == "head":
+            self.parts.append(
+                f'<meta http-equiv="Content-Security-Policy" content="{esc(self.POLICY)}">'
+                '<meta name="referrer" content="no-referrer">'
+                '<meta http-equiv="X-DNS-Prefetch-Control" content="off">'
+            )
+        elif tag == "body":
+            self.parts.append(
+                '<aside class="offline-notice" aria-label="Export profile">'
+                '<strong>Private offline export.</strong> External images and maps are not loaded automatically. '
+                'Links open online pages only when you choose to follow them. '
+                'This document retains your itinerary details and is not anonymized or made safe to share.'
+                '</aside>'
+            )
+
+    def handle_endtag(self, tag: str) -> None:
+        if self.omit_depth:
+            if tag not in self.VOID_TAGS:
+                self.omit_depth -= 1
+            return
+        if tag in self.VOID_TAGS or tag in self.OMIT_TAGS:
+            return
+        if tag == "a":
+            self.anchor_depth = max(0, self.anchor_depth - 1)
+        if tag == "head":
+            self.parts.append(self.STYLE)
+        self.parts.append(f"</{tag}>")
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.handle_starttag(tag, attrs)
+        if tag not in self.VOID_TAGS:
+            self.handle_endtag(tag)
+
+    def handle_data(self, data: str) -> None:
+        if not self.omit_depth:
+            if data == "路线图会按设备切换高德桌面版或移动版；首次打开若出现登录提示，关闭后可继续查看。":
+                data = "Map preview omitted in offline export. Route stops remain below the title; the map link opens online."
+            self.parts.append(data)
+
+    def handle_entityref(self, name: str) -> None:
+        if not self.omit_depth:
+            self.parts.append(f"&{name};")
+
+    def handle_charref(self, name: str) -> None:
+        if not self.omit_depth:
+            self.parts.append(f"&#{name};")
+
+    def handle_decl(self, decl: str) -> None:
+        if not self.omit_depth:
+            self.parts.append(f"<!{decl}>")
+
+    def handle_comment(self, data: str) -> None:
+        if not self.omit_depth:
+            self.parts.append(f"<!--{data}-->")
+
+
+def build(data: dict[str, Any], *, private_offline: bool = False) -> str:
+    """Render the original document, or an opt-in static private offline export."""
+    document = _build_document(data)
+    if not private_offline:
+        return document
+    offline = _PrivateOfflineExport()
+    offline.feed(document)
+    offline.close()
+    return "".join(offline.parts)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input", type=Path)
     parser.add_argument("output", type=Path)
+    parser.add_argument(
+        "--private-offline", action="store_true",
+        help="omit automatic external media and scripts; retain itinerary details and intentional HTTPS links",
+    )
     args = parser.parse_args()
     data = json.loads(args.input.read_text(encoding="utf-8"))
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(build(data), encoding="utf-8")
+    args.output.write_text(build(data, private_offline=args.private_offline), encoding="utf-8")
     print(f"已生成：{args.output}")
 
 
