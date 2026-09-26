@@ -5,6 +5,7 @@ import importlib.util
 import json
 import tempfile
 import unittest
+from copy import deepcopy
 from pathlib import Path
 
 
@@ -148,6 +149,138 @@ class AssembleItineraryTest(unittest.TestCase):
             {"nested": {"replace": 3}, "items": [4]},
         )
         self.assertEqual(result, {"nested": {"keep": 1, "replace": 3}, "items": [4]})
+
+    def assemble_lodging_price(self, lodging: dict) -> dict:
+        source_path = self.workspace / "results" / "lodging.json"
+        write_json(source_path, {
+            "task_id": "lodging", "source_snapshot_ids": [],
+            "entities": {"lodging_options": [{"id": "hotel", "name": "Synthetic hotel", **lodging}]},
+        })
+        self.plan["collections"]["lodging_options"] = {
+            "task": "lodging", "path": "entities.lodging_options", "ids": ["hotel"],
+        }
+        write_json(self.plan_path, self.plan)
+        source_before = source_path.read_bytes()
+        plan_before = self.plan_path.read_bytes()
+        result = assemble_itinerary.assemble(self.workspace, self.plan_path)
+        self.assertEqual(source_path.read_bytes(), source_before)
+        self.assertEqual(self.plan_path.read_bytes(), plan_before)
+        return result["planning"]["lodging_options"][0]
+
+    def test_lodging_uses_one_room_three_nights_without_rewriting_quote(self) -> None:
+        lodging = {
+            "room_requirement": {"rooms": 1}, "nights": 3,
+            "quote": {"amount_per_room_per_night_cny": 199.99, "status": "verified", "source_ids": ["synthetic-quote"]},
+        }
+        original = deepcopy(lodging)
+        result = self.assemble_lodging_price(lodging)
+        self.assertEqual(result["price"], "快照约¥199.99/间夜；1间3晚规划估算约¥599.97（按每间夜单价计算，非供应商总价）")
+        self.assertEqual(result["quote"], original["quote"])
+        self.assertEqual(lodging, original)
+        self.assertNotIn("requested_occupancy", result)
+        self.assertNotIn("travelers", result["room_requirement"])
+
+    def test_lodging_preserves_legacy_two_room_two_night_evidence(self) -> None:
+        quote = {"amount_per_room_per_night_cny": 250, "two_rooms_two_nights_estimate_cny": 900}
+        for quantities in ({}, {"room_requirement": {"rooms": 2}, "nights": 2}):
+            with self.subTest(quantities=quantities):
+                result = self.assemble_lodging_price({"quote": quote, **quantities})
+                self.assertEqual(result["price"], "快照约¥250/间夜；2间2晚约¥900")
+                self.assertEqual(result["quote"], quote)
+        result = self.assemble_lodging_price({"quote": {"two_rooms_two_nights_estimate_cny": 900}})
+        self.assertEqual(result["price"], "2间2晚约¥900")
+        self.assertNotIn("nights", result)
+        self.assertNotIn("room_requirement", result)
+
+    def test_lodging_does_not_apply_legacy_total_to_another_stay(self) -> None:
+        quote = {"amount_per_room_per_night_cny": 250, "two_rooms_two_nights_estimate_cny": 900}
+        result = self.assemble_lodging_price({"quote": quote, "room_requirement": {"rooms": 1}, "nights": 3})
+        self.assertIn("1间3晚规划估算约¥750", result["price"])
+        self.assertNotIn("2间2晚", result["price"])
+        self.assertNotIn("900", result["price"])
+        self.assertEqual(result["quote"], quote)
+        result = self.assemble_lodging_price({"quote": {"two_rooms_two_nights_estimate_cny": 900}, "nights": 3})
+        self.assertEqual(result["price"], "待重新查询")
+
+    def test_lodging_keeps_unit_price_when_quantities_are_unknown(self) -> None:
+        for quantities in ({}, {"nights": 3}, {"room_requirement": {"rooms": 1}}, {"nights": None, "requested_occupancy": {"rooms": None}}):
+            with self.subTest(quantities=quantities):
+                result = self.assemble_lodging_price({"quote": {"amount_per_room_per_night_cny": 250}, **quantities})
+                self.assertEqual(result["price"], "快照约¥250/间夜")
+                self.assertNotIn("None", result["price"])
+        self.assertEqual(self.assemble_lodging_price({})["price"], "待重新查询")
+
+    def test_lodging_zero_quotes_are_not_missing(self) -> None:
+        result = self.assemble_lodging_price({"quote": {"amount_per_room_per_night_cny": 0}, "requested_occupancy": {"rooms": 1}, "nights": 3})
+        self.assertIn("快照约¥0/间夜；1间3晚规划估算约¥0", result["price"])
+        result = self.assemble_lodging_price({"quote": {"amount_per_room_per_night_cny": 50, "two_rooms_two_nights_estimate_cny": 0}})
+        self.assertEqual(result["price"], "快照约¥50/间夜；2间2晚约¥0")
+        self.assertEqual(self.assemble_lodging_price({"price": 0})["price"], "0")
+        self.assertEqual(self.assemble_lodging_price({"price": 0, "quote": {"display": "Other price"}})["price"], "0")
+
+    def test_lodging_preserves_supplied_price_and_display(self) -> None:
+        for supplied, expected in (
+            ({"price": "Verified package: USD 120 including taxes"}, "Verified package: USD 120 including taxes"),
+            ({"price": {"display": "¥3xx per room night", "amount": None}}, "¥3xx per room night"),
+            ({"quote": {"display": "Provider total: ¥810 including taxes"}}, "Provider total: ¥810 including taxes"),
+            ({"price": "Existing display", "quote": {"display": "Other display", "amount_per_room_per_night_cny": 250}}, "Existing display"),
+        ):
+            with self.subTest(supplied=supplied):
+                result = self.assemble_lodging_price(supplied)
+                self.assertEqual(result["price"], expected)
+                if "quote" in supplied:
+                    self.assertEqual(result["quote"], supplied["quote"])
+        result = self.assemble_lodging_price({"price": "  ", "quote": {"amount_per_room_per_night_cny": "125.50"}, "nights": 3, "room_requirement": {"rooms": 1}})
+        self.assertIn("¥125.5/间夜；1间3晚规划估算约¥376.5", result["price"])
+
+    def test_lodging_rejects_invalid_amounts_even_with_supplied_display(self) -> None:
+        for field in ("amount_per_room_per_night_cny", "two_rooms_two_nights_estimate_cny"):
+            for value in (-1, True, float("nan"), float("inf"), "-1", "NaN", "Infinity", "unknown", [], {}):
+                with self.subTest(field=field, value=value):
+                    with self.assertRaisesRegex(assemble_itinerary.AssemblyError, "finite nonnegative amount"):
+                        self.assemble_lodging_price({"price": "Existing display", "quote": {field: value}})
+
+    def test_lodging_rejects_invalid_counts_without_coercion(self) -> None:
+        for value in (0, -1, True, 1.5, "2"):
+            for quantities in ({"nights": value}, {"room_requirement": {"rooms": value}}, {"requested_occupancy": {"rooms": value}}):
+                with self.subTest(quantities=quantities):
+                    with self.assertRaisesRegex(assemble_itinerary.AssemblyError, "positive integer"):
+                        self.assemble_lodging_price({"quote": {"amount_per_room_per_night_cny": 250}, **quantities})
+        with self.assertRaisesRegex(assemble_itinerary.AssemblyError, "room counts must agree"):
+            self.assemble_lodging_price({"room_requirement": {"rooms": 1}, "requested_occupancy": {"rooms": 2}})
+
+    def test_lodging_rejects_extreme_decimal_exponents_before_arithmetic(self) -> None:
+        for amount in ("1e999999", "1e-1000100"):
+            with self.subTest(amount=amount):
+                with self.assertRaisesRegex(assemble_itinerary.AssemblyError, "1000 integer and fractional digits"):
+                    self.assemble_lodging_price({"quote": {"amount_per_room_per_night_cny": amount}, "room_requirement": {"rooms": 10}, "nights": 1})
+        result = self.assemble_lodging_price({"quote": {"amount_per_room_per_night_cny": "-0e-1000100"}, "room_requirement": {"rooms": 1}, "nights": 3})
+        self.assertIn("快照约¥0/间夜；1间3晚规划估算约¥0", result["price"])
+
+    def test_lodging_derives_nights_from_explicit_calendar_dates(self) -> None:
+        lodging = {
+            "quote": {"amount_per_room_per_night_cny": 100}, "requested_occupancy": {"rooms": 1},
+            "check_in_date": "2028-02-28", "check_out_date": "2028-03-02",
+        }
+        result = self.assemble_lodging_price(lodging)
+        self.assertIn("1间3晚规划估算约¥300", result["price"])
+        self.assertEqual(result["check_in_date"], lodging["check_in_date"])
+        self.assertEqual(result["check_out_date"], lodging["check_out_date"])
+        self.assertNotIn("nights", result)
+        lodging["nights"] = 3
+        self.assertEqual(self.assemble_lodging_price(lodging)["price"], result["price"])
+
+    def test_lodging_rejects_invalid_or_conflicting_date_spans(self) -> None:
+        for dates in (
+            {"check_in_date": "2026-10-03", "check_out_date": "2026-10-03"},
+            {"check_in_date": "2026-10-04", "check_out_date": "2026-10-03"},
+            {"check_in_date": "2026-10-03", "check_out_date": "2026-10-06", "nights": 2},
+            {"check_in_date": "2026-10-03T15:00:00", "check_out_date": "2026-10-06"},
+            {"check_in_date": "invalid", "check_out_date": "2026-10-06"},
+        ):
+            with self.subTest(dates=dates):
+                with self.assertRaises(assemble_itinerary.AssemblyError):
+                    self.assemble_lodging_price(dates)
 
 
 if __name__ == "__main__":
