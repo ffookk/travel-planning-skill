@@ -22,6 +22,12 @@ TRANSPORT_COVERAGE_SORTS = {2, 3, 4, 6, 7}
 STRONG_AVAILABILITY_CLAIMS = {"available", "confirmed", "verified", "booked", "有房", "可订", "已确认"}
 
 
+ARTIFACT_SPEC = importlib.util.spec_from_file_location("travel_artifact_io", Path(__file__).with_name("artifact_io.py"))
+assert ARTIFACT_SPEC and ARTIFACT_SPEC.loader
+artifact_io = importlib.util.module_from_spec(ARTIFACT_SPEC)
+ARTIFACT_SPEC.loader.exec_module(artifact_io)
+
+
 def minute_of(value: Any) -> int | None:
     text = str(value or "")
     parts = text.split(":")
@@ -320,8 +326,7 @@ def main() -> None:
     result = audit(data)
     text = json.dumps(result, ensure_ascii=False, indent=2) + "\n"
     if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(text, encoding="utf-8")
+        artifact_io.write_private_text(args.output, text)
     print(text, end="")
     raise SystemExit(0 if result["status"] == "pass" else 1)
 

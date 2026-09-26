@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import argparse
 import html
 import html.parser
@@ -13,6 +14,12 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlencode, urlparse
+
+
+ARTIFACT_SPEC = importlib.util.spec_from_file_location("travel_artifact_io", Path(__file__).with_name("artifact_io.py"))
+assert ARTIFACT_SPEC and ARTIFACT_SPEC.loader
+artifact_io = importlib.util.module_from_spec(ARTIFACT_SPEC)
+ARTIFACT_SPEC.loader.exec_module(artifact_io)
 
 
 TYPES = {
@@ -2116,8 +2123,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     data = json.loads(args.input.read_text(encoding="utf-8"))
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(build(data, private_offline=args.private_offline), encoding="utf-8")
+    artifact_io.write_private_text(args.output, build(data, private_offline=args.private_offline))
     print(f"已生成：{args.output}")
 
 

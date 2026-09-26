@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 from copy import deepcopy
 from pathlib import Path
@@ -26,6 +27,12 @@ OUTPUT_COLLECTIONS = (
     "lodging_options", "restaurants", "restaurant_snapshots",
     "meal_baseline_routes", "meal_route_evaluations", "meal_options", "weather",
 )
+
+
+ARTIFACT_SPEC = importlib.util.spec_from_file_location("travel_artifact_io", Path(__file__).with_name("artifact_io.py"))
+assert ARTIFACT_SPEC and ARTIFACT_SPEC.loader
+artifact_io = importlib.util.module_from_spec(ARTIFACT_SPEC)
+ARTIFACT_SPEC.loader.exec_module(artifact_io)
 
 
 class AssemblyError(ValueError):
@@ -622,8 +629,7 @@ def main() -> int:
     plan_path = args.plan.resolve() if args.plan else workspace / "state" / "itinerary-plan.json"
     output = args.output.resolve() if args.output else workspace / "artifacts" / "itinerary.json"
     payload = assemble(workspace, plan_path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    artifact_io.write_private_text(args.output if args.output else output, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
     print(output)
     return 0
 
