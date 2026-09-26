@@ -11,6 +11,17 @@ Standalone JSON needs no research workspace. Its receipt explicitly reports `con
 
 When an offline-capable renderer is installed, add `--private-offline` (or call `finalize(..., private_offline=True)`) to audit and export through its private offline profile. A renderer without that explicit API is rejected before publication; the command never falls back to a regular online-capable export. The default remains the regular profile. The receipt records which profile was requested. An offline export retains the itinerary's private details and is not anonymized or automatically safe to share.
 
+For an assembled itinerary, the complete audited private offline command is:
+
+```sh
+python3 skills/travel-planning/scripts/finalize_itinerary.py \
+  .travel-research/trip/artifacts/itinerary.json \
+  .travel-research/trip/artifacts/itinerary-offline.html \
+  --workspace .travel-research/trip --private-offline
+```
+
+Use a different filename for raw previews. After finalization, do not overwrite the delivered HTML with `render_itinerary.py`; that would invalidate the receipt's HTML hash. Deliver the matching receipt with the final HTML. Keep the complete input and research workspace private; a public highlights summary is a separate explicitly selected export, not this complete itinerary.
+
 ## Research provenance
 
 The assembler adds `research_context` with schema `itinerary-research-context/v1` and the expected `research_state_sha256`. It contains no local paths. An itinerary carrying this provenance requires `--workspace`, and the finalizer checks the current `state/research.json` against that digest. Re-merge and reassemble when research changes. Older research-based itineraries without this field should also supply the workspace explicitly; the finalizer cannot discover omitted provenance in arbitrary JSON.
@@ -59,3 +70,5 @@ If a shared entity has a different ID, add an `entity_usage` entry such as `{"en
 The successful receipt records exact input, HTML, optional research, and optional decision SHA256 values, plus a deterministic `binding_sha256` over those four hashes and the `export_profile` (`regular` or `private-offline`). It also records audit time, warning/event counts, and conflict decision counts. It excludes input payloads, absolute paths, source links, and raw audit messages. Hashes detect mismatched artifacts; they are not digital signatures or a certification of travel safety. Keep the receipt with the HTML and original input.
 
 Both files are fully staged before publication and each replacement is atomic. Ordinary replacement failures restore previous files; a crash or power loss between two file replacements is not a filesystem transaction, so compare the recorded HTML hash before using a recovered pair. An exceptional rollback failure is reported explicitly and preserves remaining original backups in mode-0600 `.final-delivery-*` files beside the targets for local recovery, without logging their contents or paths.
+
+Successful HTML and receipt files always use owner-only POSIX permissions (`0600`), including when they replace files that previously allowed broader access. Staged originals also remain `0600`. Ordinary rollback restores each replaced file's original bytes and POSIX mode: the original is first moved back, then its mode is restored through the open file descriptor. Broader permissions are never applied to a staged backup or newly generated delivery. This rollback guarantee does not include ownership, ACLs, or timestamps.

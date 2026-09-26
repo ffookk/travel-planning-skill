@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1] / "skills" / "travel-planning"
@@ -312,6 +312,38 @@ class FinalizeItineraryTest(unittest.TestCase):
         self.assertEqual(self.input.read_bytes(), before)
 
     def test_second_replacement_failure_restores_both_existing_outputs(self) -> None:
+        self.output.write_bytes(b"existing HTML")
+        self.report.write_bytes(b"existing receipt")
+        if os.name == "posix":
+            self.output.chmod(0o604)
+            self.report.chmod(0o640)
+        replace = os.replace
+        calls = 0
+        def fail_once(source, target):
+            nonlocal calls
+            if os.name == "posix":
+                self.assertTrue(all(path.stat().st_mode & 0o777 == 0o600 for path in self.root.glob(".final-delivery-*")))
+            calls += 1
+            if calls == 2:
+                raise OSError("synthetic replacement failure")
+            return replace(source, target)
+        with patch.object(finalizer.os, "replace", side_effect=fail_once):
+            self.assert_preserved(self.run_final)
+        if os.name == "posix":
+            self.assertEqual(self.output.stat().st_mode & 0o777, 0o604)
+            self.assertEqual(self.report.stat().st_mode & 0o777, 0o640)
+
+    @unittest.skipUnless(os.name == "posix", "Owner-only POSIX mode contract")
+    def test_successful_delivery_replaces_public_modes_with_owner_only_files(self) -> None:
+        self.output.write_bytes(b"existing HTML")
+        self.report.write_bytes(b"existing receipt")
+        self.output.chmod(0o644)
+        self.report.chmod(0o664)
+        self.run_final()
+        self.assertEqual(self.output.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(self.report.stat().st_mode & 0o777, 0o600)
+
+    def test_non_posix_rollback_preserves_bytes_without_fchmod(self) -> None:
         replace = os.replace
         calls = 0
         def fail_once(source, target):
@@ -320,8 +352,13 @@ class FinalizeItineraryTest(unittest.TestCase):
             if calls == 2:
                 raise OSError("synthetic replacement failure")
             return replace(source, target)
-        with patch.object(finalizer.os, "replace", side_effect=fail_once):
+        with patch.object(finalizer, "os", wraps=os) as platform_os:
+            platform_os.name = "nt"
+            platform_os.fchmod = Mock(side_effect=AssertionError("POSIX permissions must not be used"))
+            platform_os.replace.side_effect = fail_once
             self.assert_preserved(self.run_final)
+            platform_os.fchmod.assert_not_called()
+        self.assertEqual(calls, 3)
 
     def test_failed_rollback_keeps_original_backups_for_local_recovery(self) -> None:
         self.output.write_bytes(b"original HTML for recovery")
@@ -339,7 +376,8 @@ class FinalizeItineraryTest(unittest.TestCase):
                 self.run_final()
         backups = list(self.root.glob(".final-delivery-*"))
         self.assertEqual({path.read_bytes() for path in backups}, {b"original HTML for recovery", b"original receipt for recovery"})
-        self.assertTrue(all(path.stat().st_mode & 0o777 == 0o600 for path in backups))
+        if os.name == "posix":
+            self.assertTrue(all(path.stat().st_mode & 0o777 == 0o600 for path in backups))
         self.assertNotIn(str(self.root), str(raised.exception))
 
     def test_nonfinite_json_is_rejected_without_overwriting_outputs(self) -> None:

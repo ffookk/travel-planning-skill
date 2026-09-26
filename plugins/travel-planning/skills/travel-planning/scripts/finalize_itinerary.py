@@ -10,6 +10,7 @@ import inspect
 import json
 import os
 import re
+import stat
 import sys
 import tempfile
 from pathlib import Path
@@ -233,6 +234,7 @@ def publish(artifacts: list[tuple[Path, bytes]]) -> None:
     """Stage complete files, replace atomically, and roll back ordinary I/O failures."""
     staged: dict[Path, Path] = {}
     backups: dict[Path, Path | None] = {}
+    original_modes: dict[Path, int] = {}
     replaced: list[Path] = []
     rollback_failed = False
 
@@ -254,7 +256,12 @@ def publish(artifacts: list[tuple[Path, bytes]]) -> None:
             target.parent.mkdir(parents=True, exist_ok=True)
             if target.is_symlink() or (target.exists() and not target.is_file()):
                 raise FinalizationError("Delivery targets must be regular files, not symlinks or directories")
-            backups[target] = stage(target, target.read_bytes()) if target.exists() else None
+            if target.exists():
+                if os.name == "posix":
+                    original_modes[target] = stat.S_IMODE(target.stat().st_mode)
+                backups[target] = stage(target, target.read_bytes())
+            else:
+                backups[target] = None
             staged[target] = stage(target, content)
         for target, _ in artifacts:
             os.replace(staged[target], target)
@@ -264,6 +271,11 @@ def publish(artifacts: list[tuple[Path, bytes]]) -> None:
             for target in reversed(replaced):
                 if backups[target] is None:
                     target.unlink(missing_ok=True)
+                elif os.name == "posix":
+                    with backups[target].open("rb") as original:
+                        os.replace(backups[target], target)
+                        # Widen only the restored original, never a staged backup or new delivery.
+                        os.fchmod(original.fileno(), original_modes[target])
                 else:
                     os.replace(backups[target], target)
         except OSError:
