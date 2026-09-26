@@ -83,6 +83,12 @@ python3 skills/travel-planning/scripts/audit_itinerary.py ".travel-research/<tri
 python3 skills/travel-planning/scripts/render_itinerary.py ".travel-research/<trip-id>/artifacts/itinerary.json" ".travel-research/<trip-id>/artifacts/itinerary.html"
 ```
 
+For final delivery, use the [audited final-delivery entry point](references/final-delivery.md). The existing audit and renderer commands remain available for diagnostics and previews. Set `workflow.phase="final"` explicitly after resolving the required evidence; the finalizer does not promote drafts. Assembled itineraries require their matching workspace, and any used research conflicts require bound decisions:
+
+```bash
+python3 skills/travel-planning/scripts/finalize_itinerary.py ".travel-research/<trip-id>/artifacts/itinerary.json" ".travel-research/<trip-id>/artifacts/itinerary.html" --workspace ".travel-research/<trip-id>"
+```
+
 ## 页面与交付
 
 顶部另设“路线图”视图。每个旅行日通过 `planning.daily_routes[]` 显式声明一条完整导览路线，把当日住宿、景点、正餐和其他实际停靠点按事件顺序写入 `stops[]`；页面只显示这一张带有序 `via[n]` 途经点的高德路线图，并保留全屏与高德外链。分段出行方式仍以详细行程为准，导览图不得漏掉中间站点，也不得用多张交通段地图代替当天全流程。
