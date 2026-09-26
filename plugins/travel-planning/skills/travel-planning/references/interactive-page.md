@@ -69,6 +69,18 @@
 
 已核验高德 POI 的餐厅卡优先提供“在高德查看门店”和“在高德导航到店”。详情使用 `https://uri.amap.com/poidetail`，导航使用 `https://uri.amap.com/navigation`；移动端可尝试调起高德 App，桌面端保留 H5 页面。高德链接用于用户实时查看和自由选择，不代表高德为本行程背书。
 
+## Optional private offline export
+
+The renderer's default output remains unchanged. For a local copy that does not automatically load external images or map previews, use:
+
+```sh
+python3 scripts/render_itinerary.py itinerary.json itinerary-offline.html --private-offline
+```
+
+Python callers can use `build(data, private_offline=True)`. This profile retains the itinerary text, numbered route stops, source attributions, and intentional HTTPS links, including their original query parameters. Images become text descriptions and source links; maps retain their route links. WeChat copy buttons become readable account and menu instructions. The source JSON is not modified.
+
+The offline HTML omits scripts and embedded media, and adds a restrictive Content Security Policy. Its detail, overview, and route views use the existing native CSS controls; expandable restaurant and source sections still work without JavaScript. Opening an external link deliberately leaves the offline document and may contact the linked service. This profile does not anonymize the itinerary, remove private trip details, or make the file safe to share. It does not download resources for later offline viewing or refresh previously researched information.
+
 ## 汇总与派生
 
 - 预算：从事件 `cost_items[]` 派生交通、住宿、门票、付费项目和餐饮小计；区分已确认、平台价、估算、待复核和可选。汇总可以放在行程末尾，但不能维护第二套金额。
