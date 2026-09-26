@@ -20,6 +20,8 @@ def public_text(value: Any) -> str:
         raise ShareExportError("Public labels must be nonblank text of at most 200 characters")
     if any(ord(character) < 32 or 127 <= ord(character) < 160 for character in value):
         raise ShareExportError("Public labels cannot contain control characters")
+    if any(0xD800 <= ord(character) <= 0xDFFF for character in value):
+        raise ShareExportError("Public labels must contain valid Unicode text")
     return value
 
 

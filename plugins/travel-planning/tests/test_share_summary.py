@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import io
 import json
+import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from html.parser import HTMLParser
 from pathlib import Path
 from unittest.mock import patch
@@ -69,6 +72,46 @@ class ShareSummaryTest(unittest.TestCase):
         self.assertLess(result.index("Tea village"), result.index("Lake"))
         self.assertNotIn("2026-10", result)
         self.assertNotIn("09:00", result)
+
+    def test_invalid_unicode_fails_without_traceback_or_output_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, selection, output = (root / name for name in ("input.json", "selection.json", "public.html"))
+            source.write_text(json.dumps(self.data), encoding="utf-8")
+            output.write_text("previous", encoding="utf-8")
+            for field in ("public_title", "public_label"):
+                for surrogate in ("\ud800", "\udfff"):
+                    with self.subTest(field=field, codepoint=ord(surrogate)):
+                        candidate = copy.deepcopy(self.selection)
+                        target = candidate if field == "public_title" else candidate["attractions"][0]
+                        target[field] = "SYNTHETIC-PRIVATE " + surrogate
+                        selection.write_text(json.dumps(candidate), encoding="utf-8")
+                        before = (source.read_bytes(), selection.read_bytes(), output.read_bytes())
+                        errors = io.StringIO()
+                        args = ["export_share_summary.py", str(source), str(output), "--selection", str(selection)]
+                        with patch.object(sys, "argv", args), redirect_stderr(errors):
+                            with self.assertRaises(SystemExit) as caught:
+                                share.main()
+                        self.assertEqual(caught.exception.code, 1)
+                        self.assertEqual(errors.getvalue(), "Share export failed: Public labels must contain valid Unicode text\n")
+                        self.assertEqual((source.read_bytes(), selection.read_bytes(), output.read_bytes()), before)
+                        self.assertEqual(set(root.iterdir()), {source, selection, output})
+
+    def test_unicode_labels_round_trip_through_cli_entrypoint(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, selection, output = (root / name for name in ("input.json", "selection.json", "public.html"))
+            source.write_text(json.dumps(self.data), encoding="utf-8")
+            self.selection["public_title"] = "湖边散步 🌅"
+            self.selection["attractions"][0]["public_label"] = "Café 🌿"
+            # JSON escapes an astral character as a valid surrogate pair; it must remain supported.
+            selection.write_text(json.dumps(self.selection), encoding="utf-8")
+            args = ["export_share_summary.py", str(source), str(output), "--selection", str(selection)]
+            with patch.object(sys, "argv", args), redirect_stdout(io.StringIO()):
+                share.main()
+            document = output.read_text(encoding="utf-8")
+            self.assertIn("湖边散步 🌅", document)
+            self.assertIn("Café 🌿", document)
 
     def test_unknown_selection_fields_and_invalid_entities_fail(self):
         cases = [

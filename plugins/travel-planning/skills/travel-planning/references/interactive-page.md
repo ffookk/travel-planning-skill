@@ -78,7 +78,7 @@
 
 ## Explicit minimal share summary
 
-For a public-facing summary, use `scripts/export_share_summary.py itinerary.json share.html --selection share-selection.json`. This is a separate optional export; the full private itinerary and its ordinary renderer remain unchanged. It is a selected highlights page, not a complete execution guide or an automatic anonymizer.
+For a public-facing summary, run `python3 scripts/export_share_summary.py itinerary.json share.html --selection share-selection.json` from this skill's directory. This is a separate optional export; the full private itinerary and its ordinary renderer remain unchanged. It is a selected highlights page, not a complete execution guide or an automatic anonymizer.
 
 Create the selection with the exact labels intended for the audience:
 
