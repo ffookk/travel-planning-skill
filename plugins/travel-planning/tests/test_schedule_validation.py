@@ -171,6 +171,82 @@ class ScheduleValidationTest(unittest.TestCase):
         event["admission"] = {"timezone": "Asia/Shanghai", "last_entry": "08:00"}
         self.assertIn("after last_entry", self.messages(itinerary([event])))
 
+    def test_admission_only_timezone_checks_legacy_clocks_and_preserves_input(self) -> None:
+        event = {
+            "id": "local-visit", "type": "attraction", "title": "Local visit",
+            "time": "09:00", "end_time": "10:00",
+            "execution": {"checkpoints": [{"order": 1, "name": "Visit", "time": "09:00", "end_time": "10:00"}]},
+            "admission": {"timezone": "Asia/Shanghai", "opening_hours": "08:00-09:30", "last_entry": "08:30"},
+        }
+        data = itinerary([event])
+        before = copy.deepcopy(data)
+        result = audit_module.audit(data)
+        self.assertIn("outside opening_hours", "\n".join(result["blocking"]))
+        self.assertIn("after last_entry", "\n".join(result["blocking"]))
+        self.assertEqual(data, before)
+        event["admission"].update(opening_hours="08:00-10:00", last_entry="09:00")
+        self.assertEqual(audit_module.audit(data)["blocking"], [])
+
+    def test_admission_only_timezone_rejects_legacy_dst_gap_and_fold(self) -> None:
+        for day_date, hour, reason in (("2026-03-08", "02:30", "nonexistent"), ("2026-11-01", "01:30", "ambiguous")):
+            event = {"type": "attraction", "time": hour, "end_time": "03:30", "admission": {"timezone": "America/New_York", "opening_hours": "00:00-04:00"}}
+            data = itinerary([event])
+            data["days"][0]["date"] = day_date
+            with self.subTest(reason=reason):
+                errors, _ = renderer.schedule_validation.audit_schedule(data)
+                self.assertIn(reason, "\n".join(errors))
+
+    def test_admission_only_timezone_needs_a_known_date_to_resolve_clocks(self) -> None:
+        for day_date in (None, "unknown"):
+            event = {"type": "attraction", "time": "09:00", "end_time": "10:00", "admission": {"timezone": "Asia/Shanghai", "opening_hours": "08:00-18:00"}}
+            data = itinerary([event])
+            data["days"][0]["date"] = day_date
+            with self.subTest(day_date=day_date):
+                errors, pending = renderer.schedule_validation.audit_schedule(data)
+                self.assertEqual(errors, [])
+                self.assertIn("valid day.date", "\n".join(pending))
+
+    def test_dated_admission_fields_validate_the_effective_iana_zone(self) -> None:
+        for scope in ("admission", "event", "day", "trip"):
+            for field in ("opening_windows", "last_entry_at"):
+                event = dated_event("2026-10-17T09:00+08:00", "2026-10-17T10:00+08:00", type="attraction")
+                event["admission"] = {}
+                data = itinerary([event])
+                target = {"admission": event["admission"], "event": event, "day": data["days"][0], "trip": data["trip"]}[scope]
+                target["timezone"] = "Asia/Shanghai"
+                if field == "opening_windows":
+                    event["admission"][field] = [{"start_at": "2026-10-17T08:00+09:00", "end_at": "2026-10-17T18:00+09:00"}]
+                else:
+                    event["admission"][field] = "2026-10-17T11:00+09:00"
+                with self.subTest(scope=scope, field=field):
+                    errors, _ = renderer.schedule_validation.audit_schedule(data)
+                    self.assertIn("does not match its IANA timezone", "\n".join(errors))
+                    event["admission"][field] = (
+                        [{"start_at": "2026-10-17T08:00+08:00", "end_at": "2026-10-17T18:00+08:00"}]
+                        if field == "opening_windows" else "2026-10-17T11:00+08:00"
+                    )
+                    self.assertEqual(renderer.schedule_validation.audit_schedule(data)[0], [])
+
+    def test_explicit_admission_zone_overrides_inheritance_for_dated_windows(self) -> None:
+        event = dated_event("2026-10-17T09:00+08:00", "2026-10-17T02:00Z", type="attraction", end_timezone="Etc/UTC")
+        event["admission"] = {
+            "timezone": "Asia/Tokyo", "last_entry_at": "2026-10-17T10:00+09:00",
+            "opening_windows": [{"start_at": "2026-10-17T08:00+09:00", "end_at": "2026-10-17T11:00+09:00"}],
+        }
+        data = itinerary([event], timezone="Asia/Shanghai")
+        self.assertEqual(renderer.schedule_validation.audit_schedule(data)[0], [])
+        event["admission"]["opening_windows"][0]["end_at"] = "2026-10-17T10:59+09:00"
+        self.assertIn("outside opening_windows", "\n".join(renderer.schedule_validation.audit_schedule(data)[0]))
+
+    def test_inherited_admission_windows_accept_valid_dst_offsets(self) -> None:
+        event = dated_event("2026-11-01T01:30-04:00", "2026-11-01T02:30-05:00", type="attraction")
+        event["admission"] = {"opening_windows": [{"start_at": "2026-11-01T01:00-04:00", "end_at": "2026-11-01T03:00-05:00"}]}
+        data = itinerary([event], timezone="America/New_York")
+        data["days"][0]["date"] = "2026-11-01"
+        self.assertEqual(renderer.schedule_validation.audit_schedule(data)[0], [])
+        event["admission"]["opening_windows"][0]["end_at"] = "2026-11-01T03:00-04:00"
+        self.assertIn("does not match its IANA timezone", "\n".join(renderer.schedule_validation.audit_schedule(data)[0]))
+
     def test_opening_hours_normalize_both_endpoints_to_known_venue_zone(self) -> None:
         for scope in ("admission", "event", "day", "trip"):
             event = dated_event("2026-10-17T09:00+08:00", "2026-10-17T12:00Z", type="attraction", end_timezone="Etc/UTC")

@@ -158,7 +158,7 @@ def numeric_minutes(route: dict[str, Any]) -> tuple[float | None, bool]:
 
 
 def feasibility(event: dict[str, Any], candidate: dict[str, Any], start: datetime | None, end: datetime | None,
-                *, event_timezone: Any = None) -> tuple[list[str], list[str]]:
+                *, event_timezone: Any = None, event_date: Any = None) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     pending: list[str] = []
     if event.get("type") == "transport":
@@ -178,14 +178,21 @@ def feasibility(event: dict[str, Any], candidate: dict[str, Any], start: datetim
         admission_zone = start.tzinfo
     if admission_zone is not None:
         if start.utcoffset() is None:
-            pending.append("Admission timezone needs an event timezone or start_at before comparison")
-            return errors, pending
-        start = start.astimezone(admission_zone)
-        end = end.astimezone(admission_zone) if end is not None else None
+            try:
+                date.fromisoformat(str(event_date))
+            except ValueError:
+                pending.append("Admission timezone needs a valid day.date before local clocks can be resolved")
+                return errors, pending
+            start = localize(start, admission_zone)
+            end = localize(end, admission_zone) if end is not None else None
+        else:
+            start = start.astimezone(admission_zone)
+            end = end.astimezone(admission_zone) if end is not None else None
+    admission_timezone = admission_zone.key if admission_zone is not None else None
     unresolved_local_end = admission_zone is None and end is not None and start.utcoffset() != end.utcoffset()
     local_minute = start.hour * 60 + start.minute + start.second / 60 + start.microsecond / 60_000_000
     if admission.get("last_entry_at") is not None:
-        cutoff = timestamp(admission["last_entry_at"], admission.get("timezone"))
+        cutoff = timestamp(admission["last_entry_at"], admission_timezone)
         if start.utcoffset() is None:
             pending.append("Last entry instant needs an event timezone or start_at before comparison")
         elif instant(start) > instant(cutoff):
@@ -204,8 +211,8 @@ def feasibility(event: dict[str, Any], candidate: dict[str, Any], start: datetim
         for item in windows:
             if not isinstance(item, dict):
                 raise ValueError("opening_windows entries must be objects")
-            opening = timestamp(item.get("start_at"), admission.get("timezone"))
-            closing = timestamp(item.get("end_at"), admission.get("timezone"))
+            opening = timestamp(item.get("start_at"), admission_timezone)
+            closing = timestamp(item.get("end_at"), admission_timezone)
             if instant(closing) <= instant(opening):
                 raise ValueError("opening window end_at must be later than start_at")
             parsed.append((instant(opening), instant(closing)))
@@ -251,6 +258,7 @@ def audit_schedule(data: dict[str, Any]) -> tuple[list[str], list[str]]:
                 failures, warnings = feasibility(
                     event, routes.get(str(event.get("route_id")), {}), start, end,
                     event_timezone=timezone_name(event, day, trip),
+                    event_date=day.get("date"),
                 )
                 errors.extend(f"{label}: {message}" for message in failures)
                 pending.extend(f"{label}: {message}" for message in warnings)
