@@ -75,3 +75,21 @@
 - 待办：购票、订房、景点预约、餐厅预约及各自截止时间。
 - 每日强度：步行、爬升、换乘次数、最早出发、最晚回酒店。
 - 复核提醒：天气、余票、价格、开放时间和临时公告的再次检查时间。
+
+## Explicit minimal share summary
+
+For a public-facing summary, run `python3 scripts/export_share_summary.py itinerary.json share.html --selection share-selection.json` from this skill's directory. This is a separate optional export; the full private itinerary and its ordinary renderer remain unchanged. It is a selected highlights page, not a complete execution guide or an automatic anonymizer.
+
+Create the selection with the exact labels intended for the audience:
+
+```json
+{
+  "schema_version": "travel-share-selection/v1",
+  "public_title": "Weekend highlights",
+  "attractions": [{"id": "a1", "public_label": "Lakeside walk"}]
+}
+```
+
+Only `public_title` (default: `Travel highlights`) and explicitly supplied `public_label` text enter the HTML. Attraction IDs are checked against actually used attractions but are not exported. The exporter does not copy the itinerary's original title, attraction names, dates, times, traveler details, hotel information, addresses, coordinates, private notes, documents, quote data, source links, query parameters, or unknown extension fields. Selection order is independent of the private schedule. Empty selection yields a generic page.
+
+The summary contains no scripts, links, external images, fonts or embedded maps. Review the chosen public labels: text deliberately placed in the selection is published to the file exactly as supplied (HTML-escaped), and labels can still reveal a destination or identity. This boundary avoids copying private source fields; it cannot establish that human-authored public text is anonymous. The command only writes a local file and never authorizes or performs online publication. Keep the selection and complete source itinerary private.
