@@ -1,0 +1,160 @@
+{
+  "schema": "planning-case/v1",
+  "id": "cancellation-processing-cutoff-unknown",
+  "prompt": "All instants have already been converted to minutes on one synthetic offset-aware axis. A synthetic cancellation must finish by cutoff, including processing time, using channel-a or channel-b. Both channels are otherwise valid and receipt-capable. Choose any channel that can finish by cutoff, or [] if none is supported. Calculation is the latest start for channel-a: cutoff minus its processing time. Pending lists unknown cutoff or processing facts. Null calculation preserves unknown timing; this fixture states no real provider policy.",
+  "facts": {
+    "start": {
+      "description": "Synthetic: proposed action start",
+      "value": 1100,
+      "unit": "minutes",
+      "status": "verified"
+    },
+    "cutoff": {
+      "description": "Synthetic: completion cutoff",
+      "value": null,
+      "unit": "minutes",
+      "status": "unknown"
+    },
+    "a-process": {
+      "description": "Synthetic: channel A required processing",
+      "value": 25,
+      "unit": "minutes",
+      "status": "verified"
+    },
+    "b-process": {
+      "description": "Synthetic: channel B required processing",
+      "value": 5,
+      "unit": "minutes",
+      "status": "verified"
+    }
+  },
+  "rules": [
+    {
+      "id": "selection",
+      "kind": "choice",
+      "options": [
+        {
+          "id": "channel-a",
+          "requires": [
+            {
+              "left": {
+                "op": "sum",
+                "args": [
+                  {
+                    "fact": "start"
+                  },
+                  {
+                    "fact": "a-process"
+                  }
+                ]
+              },
+              "op": "le",
+              "right": {
+                "fact": "cutoff"
+              }
+            }
+          ]
+        },
+        {
+          "id": "channel-b",
+          "requires": [
+            {
+              "left": {
+                "op": "sum",
+                "args": [
+                  {
+                    "fact": "start"
+                  },
+                  {
+                    "fact": "b-process"
+                  }
+                ]
+              },
+              "op": "le",
+              "right": {
+                "fact": "cutoff"
+              }
+            }
+          ]
+        }
+      ],
+      "minimum": 1,
+      "maximum": 1,
+      "policy": "feasible"
+    },
+    {
+      "id": "calculation",
+      "kind": "quantity",
+      "expression": {
+        "op": "sum",
+        "args": [
+          {
+            "fact": "cutoff"
+          },
+          {
+            "op": "scale",
+            "factor": -1,
+            "arg": {
+              "fact": "a-process"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "pending",
+      "kind": "pending",
+      "facts": [
+        "cutoff",
+        "a-process",
+        "b-process"
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "id": "supported-1",
+      "answers": {
+        "selection": [],
+        "calculation": {
+          "value": null,
+          "unit": "minutes"
+        },
+        "pending": [
+          "cutoff"
+        ]
+      },
+      "expect": "pass"
+    },
+    {
+      "id": "unsupported-1",
+      "answers": {
+        "selection": [
+          "channel-a"
+        ],
+        "calculation": {
+          "value": null,
+          "unit": "minutes"
+        },
+        "pending": [
+          "cutoff"
+        ]
+      },
+      "expect": "fail"
+    },
+    {
+      "id": "unsupported-2",
+      "answers": {
+        "selection": [],
+        "calculation": {
+          "value": 1120,
+          "unit": "minutes"
+        },
+        "pending": [
+          "cutoff"
+        ]
+      },
+      "expect": "fail"
+    }
+  ]
+}
