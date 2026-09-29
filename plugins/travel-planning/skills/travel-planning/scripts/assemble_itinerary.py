@@ -367,12 +367,49 @@ def default_settings(plan: dict[str, Any]) -> dict[str, Any]:
     return deep_merge(values, plan.get("defaults") or {})
 
 
+def validate_collection_bindings(bindings: Any) -> None:
+    """Validate selection instructions before reading any collection inputs."""
+    if not isinstance(bindings, dict):
+        raise AssemblyError("Collections must be an object")
+    for binding in bindings.values():
+        if not isinstance(binding, dict):
+            raise AssemblyError("Each collection binding must be an object")
+        sources = [key for key in ("task", "file") if key in binding]
+        if len(sources) != 1:
+            raise AssemblyError("Each collection binding must declare exactly one of task or file")
+        source = binding[sources[0]]
+        if not isinstance(source, str) or not source:
+            if sources[0] == "task":
+                raise AssemblyError("Task IDs must use nonempty strings")
+            raise AssemblyError("Collection file must be a nonempty string")
+        if "path" not in binding or not isinstance(binding["path"], str):
+            raise AssemblyError("Each collection binding requires a string path")
+        if "id_key" in binding and (not isinstance(binding["id_key"], str) or not binding["id_key"]):
+            raise AssemblyError("Collection id_key must be a nonempty string")
+        if "ids" in binding:
+            identifiers = binding["ids"]
+            if not isinstance(identifiers, list) or any(not isinstance(value, str) or not value for value in identifiers):
+                raise AssemblyError("Collection ids must be an array of nonempty strings")
+            if len(set(identifiers)) != len(identifiers):
+                raise AssemblyError("Collection ids must not contain duplicates")
+        if "patches" in binding:
+            patches = binding["patches"]
+            if not isinstance(patches, dict) or any(not isinstance(value, dict) for value in patches.values()):
+                raise AssemblyError("Collection patches must map entity IDs to objects")
+        if "append" in binding:
+            appended = binding["append"]
+            if not isinstance(appended, list) or any(not isinstance(value, dict) for value in appended):
+                raise AssemblyError("Collection append must be an array of objects")
+
+
 def load_collections(
     workspace: Path, plan: dict[str, Any]
 ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, dict[str, Any]]]:
     collections: dict[str, list[dict[str, Any]]] = {}
     task_results: dict[str, dict[str, Any]] = {}
-    for name, binding in (plan.get("collections") or {}).items():
+    bindings = plan.get("collections", {})
+    validate_collection_bindings(bindings)
+    for name, binding in bindings.items():
         if not isinstance(binding, dict):
             raise AssemblyError(f"collections.{name} 必须是对象")
         if binding.get("task"):

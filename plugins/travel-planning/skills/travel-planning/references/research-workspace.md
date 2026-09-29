@@ -134,6 +134,8 @@ python3 skills/travel-planning/scripts/research_workspace.py merge \
 
 ## 声明式装配
 
+Collection bindings are validated before any collection input is read. Each binding declares exactly one nonempty string `task` or `file` and a string `path`. When present, `id_key` is a nonempty string and `ids` is an array of unique nonempty strings; a scalar string is not a selection list. Omit `ids` to retain all source records, use `ids: []` to select none, or supply an array to select records in that exact order. `patches` maps entity IDs to object overlays, and `append` is an array of objects. Empty patch objects and append arrays remain valid, and appended objects follow the selection. This is binding validation, not enforcement of the entire plan schema; existing extension collection names and object fields remain supported.
+
 `merge` 后，主 Agent 将选用实体、景点执行配置、餐窗、逐日事件、预约任务和降级策略写入 `state/itinerary-plan.json`。计划使用 `itinerary-plan/v1`，并通过 `research_state_sha256` 绑定当前 `state/research.json`；Agent 只写 JSON 决策，不为目的地创建 Python。
 
 ```bash
