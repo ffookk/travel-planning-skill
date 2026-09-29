@@ -1,4 +1,4 @@
-<!-- travel-guide: {"id":"dietary-cross-contact","title":"Dietary Requirements and Cross-Contact Questions","category":"readiness","when":"A meal choice depends on ingredient exclusions or preparation practices that a menu alone cannot establish.","tags":["dietary requirements","cross-contact","饮食限制","交叉接触"]} -->
+<!-- travel-guide: {"id":"dietary-cross-contact","title":"Dietary Requirements and Cross-Contact Questions","category":"readiness","when":"A meal choice depends on ingredient exclusions or preparation practices that a menu alone cannot establish.","tags":["dietary requirements","cross-contact","饮食限制","交叉接触","allergy","food allergy","过敏","食物过敏","allergies","food allergies"]} -->
 
 # Dietary Requirements and Cross-Contact Questions
 
