@@ -1,0 +1,157 @@
+{
+  "schema": "planning-case/v1",
+  "id": "pass-commitment-optional-only",
+  "prompt": "Compare individual-tickets = base-tickets + committed-extra + shared-supplement with travel-pass = pass-price + shared-supplement. The optional-extra is not booked or committed and must not affect the comparison. All fares are eligible and have identical scope. Choose a cheapest option, allowing ties. Calculation is tickets total minus pass total, in AUD; negative means tickets cost less. Pending lists unknown comparison-price facts. Defer when the comparison cannot be established.",
+  "facts": {
+    "base-tickets": {
+      "description": "Synthetic: committed eligible tickets",
+      "value": 54,
+      "unit": "AUD",
+      "status": "verified"
+    },
+    "committed-extra": {
+      "description": "Synthetic: additional committed eligible fares",
+      "value": 0,
+      "unit": "AUD",
+      "status": "verified"
+    },
+    "shared-supplement": {
+      "description": "Synthetic: same unavoidable supplement under either option",
+      "value": 8,
+      "unit": "AUD",
+      "status": "verified"
+    },
+    "pass-price": {
+      "description": "Synthetic: pass price",
+      "value": 60,
+      "unit": "AUD",
+      "status": "verified"
+    },
+    "optional-extra": {
+      "description": "Synthetic: uncommitted activity fare, excluded from totals",
+      "value": 14,
+      "unit": "AUD",
+      "status": "verified"
+    }
+  },
+  "rules": [
+    {
+      "id": "selection",
+      "kind": "choice",
+      "options": [
+        {
+          "id": "individual-tickets",
+          "requires": [],
+          "cost": {
+            "op": "sum",
+            "args": [
+              {
+                "fact": "base-tickets"
+              },
+              {
+                "fact": "committed-extra"
+              },
+              {
+                "fact": "shared-supplement"
+              }
+            ]
+          }
+        },
+        {
+          "id": "travel-pass",
+          "requires": [],
+          "cost": {
+            "op": "sum",
+            "args": [
+              {
+                "fact": "pass-price"
+              },
+              {
+                "fact": "shared-supplement"
+              }
+            ]
+          }
+        }
+      ],
+      "minimum": 1,
+      "maximum": 1,
+      "policy": "cheapest"
+    },
+    {
+      "id": "calculation",
+      "kind": "quantity",
+      "expression": {
+        "op": "sum",
+        "args": [
+          {
+            "fact": "base-tickets"
+          },
+          {
+            "fact": "committed-extra"
+          },
+          {
+            "op": "scale",
+            "factor": -1,
+            "arg": {
+              "fact": "pass-price"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "pending",
+      "kind": "pending",
+      "facts": [
+        "base-tickets",
+        "committed-extra",
+        "shared-supplement",
+        "pass-price"
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "id": "supported-1",
+      "answers": {
+        "selection": [
+          "individual-tickets"
+        ],
+        "calculation": {
+          "value": -6,
+          "unit": "AUD"
+        },
+        "pending": []
+      },
+      "expect": "pass"
+    },
+    {
+      "id": "unsupported-1",
+      "answers": {
+        "selection": [
+          "travel-pass"
+        ],
+        "calculation": {
+          "value": -6,
+          "unit": "AUD"
+        },
+        "pending": []
+      },
+      "expect": "fail"
+    },
+    {
+      "id": "unsupported-2",
+      "answers": {
+        "selection": [
+          "individual-tickets"
+        ],
+        "calculation": {
+          "value": 8,
+          "unit": "AUD"
+        },
+        "pending": []
+      },
+      "expect": "fail"
+    }
+  ]
+}
