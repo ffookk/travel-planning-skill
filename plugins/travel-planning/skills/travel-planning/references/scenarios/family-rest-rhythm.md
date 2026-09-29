@@ -1,4 +1,4 @@
-<!-- travel-guide: {"id":"family-rest-rhythm","title":"Family Rest and Care Rhythm","category":"readiness","when":"A family day must fit traveler-defined rest or care windows around fixed bookings.","tags":["family pacing","rest windows","亲子节奏","休息安排"]} -->
+<!-- travel-guide: {"id":"family-rest-rhythm","title":"Family Rest and Care Rhythm","category":"readiness","when":"A family day must fit traveler-defined rest or care windows around fixed bookings.","tags":["family pacing","rest windows","亲子节奏","休息安排","infant feeding","changing","stroller","caregiver"]} -->
 
 # Family Rest and Care Rhythm
 
