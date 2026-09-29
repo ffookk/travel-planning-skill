@@ -1,4 +1,4 @@
-<!-- travel-guide: {"id":"hotel-night-accounting","title":"Hotel Night and Room Accounting","category":"planning","when":"Use when arrival times, consecutive stays, multiple rooms, or early access make the required hotel nights or quoted room-nights unclear.","tags":["hotel nights","room nights","住宿夜数","凌晨入住"]} -->
+<!-- travel-guide: {"id":"hotel-night-accounting","title":"Hotel Night and Room Accounting","category":"planning","when":"Use when arrival times, consecutive stays, multiple rooms, child occupancy, or early access make the required hotel nights, quoted room-nights, or party coverage unclear.","tags":["hotel nights","room nights","住宿夜数","凌晨入住","early check-in","late arrival","提前入住","延迟抵达","child occupancy","children","儿童入住"]} -->
 
 # Hotel Night and Room Accounting
 
@@ -8,20 +8,20 @@ Use when the traveler could book the wrong local night, leave an accommodation g
 
 ## Minimum inputs and evidence
 
-Collect local arrival and departure dates and times, the first moment a room is needed, the last moment it is needed, adults and rooms, and essential bed requirements. Check the hotel's current check-in, check-out, early-arrival, late-arrival, and no-show terms, plus the exact offer's dates and occupancy. Use the property or booking operator's applicable policy; “24-hour reception” alone does not establish early room availability or retention of an unused prior night.
+Collect local arrival and departure dates and times, the first moment a room is needed, the last moment it is needed, adults, child count where applicable, rooms, and essential bed requirements. Collect only the child age bands or ages required by the property's occupancy or rate rules; do not request names or full birth dates. Check the hotel's current check-in, check-out, early-arrival, late-arrival, and no-show terms, plus the exact offer's dates and occupancy. Use the property or booking operator's applicable policy; “24-hour reception” alone does not establish early room availability or retention of an unused prior night.
 
 ## Decision procedure
 
 1. Draw the required accommodation intervals in destination local dates. List every paid night explicitly; checkout is the boundary after the last night, not another occupied night by default.
 2. Match room access to those intervals. If immediate early-morning access requires the preceding hotel night, verify late-arrival handling and retention directly through an authorized user action. Otherwise plan a confirmed luggage or waiting arrangement until normal access.
-3. Check rooms, adult occupancy, and beds separately. Multiply a per-room-per-night quote by confirmed rooms and nights only when that quote applies throughout. A full-stay total must not be multiplied again.
+3. Check rooms, adult and child occupancy, applicable child age bands, and beds separately. Multiply a per-room-per-night quote by confirmed rooms and nights only when that quote applies throughout. A full-stay total must not be multiplied again.
 4. Separate day-use, late checkout, taxes, and deposits where relevant. Recheck continuity when a property change or date change splits the stay.
 
 ## Existing fields, gate, and fallback
 
 Bind lodging events with `lodging_id` to `planning.lodging_options[]`. Match `room_requirement` against hotel snapshot `query.requested_occupancy`; existing hotel queries retain `check_in_date` and `check_out_date`. Preserve quoted `price.amount`, `currency`, `basis`, and `display` within source snapshots and use `inventory_refs[]` for the selected offer. Summarize room access and the explicitly counted nights in event `details` and `cost_summary`; use `readiness` for unresolved property confirmation. See [lodging and arrival checks](../trip-readiness.md).
 
-Do not claim multi-room availability from a quotation that lacks that capacity verification.
+Do not claim multi-room availability from a quotation that lacks that capacity verification. The current hotel query occupancy records adults and rooms; it does not establish child-specific eligibility or rates. If the query cannot represent the party's required child occupancy, retain the quote as a candidate and record that gap in `planning.readiness[]` with `status=to_recheck`, a specific property or booking-platform HTTPS action link to the applicable child-occupancy policy or exact offer, and confirmation of party coverage for the selected quote. Do not call an adult-only query a complete party match or invent new snapshot fields.
 
 ## Synthetic decision change
 
