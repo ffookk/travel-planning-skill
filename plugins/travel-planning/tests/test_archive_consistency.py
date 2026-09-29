@@ -124,6 +124,50 @@ class ArchiveConsistencyTest(unittest.TestCase):
         self.args.title = "Synthetic valid title"
         self.assertEqual(workspace.archive(self.args)["status"], "archived")
 
+    def test_interrupt_before_record_replace_removes_uncommitted_document(self):
+        replace = os.replace
+        def interrupt_record(source, target):
+            if Path(target) == self.record:
+                raise KeyboardInterrupt
+            return replace(source, target)
+        with patch.object(workspace.os, "replace", side_effect=interrupt_record):
+            with self.assertRaises(KeyboardInterrupt):
+                workspace.archive(self.args)
+        self.assert_no_new_archive()
+        self.assertEqual(workspace.archive(self.args)["status"], "archived")
+
+    def test_interrupt_after_actual_record_replace_preserves_committed_pair(self):
+        replace = os.replace
+        def interrupt_after_record_replace(source, target):
+            result = replace(source, target)
+            if Path(target) == self.record:
+                raise KeyboardInterrupt
+            return result
+        with patch.object(workspace.os, "replace", side_effect=interrupt_after_record_replace):
+            with self.assertRaises(KeyboardInterrupt):
+                workspace.archive(self.args)
+        record = json.loads(self.record.read_bytes())
+        stored = self.stored.read_bytes()
+        self.assertEqual(stored, self.source.read_bytes())
+        self.assertEqual(record["bytes"], len(stored))
+        self.assertEqual(record["sha256"], hashlib.sha256(stored).hexdigest())
+        self.assertEqual(list((self.trip / "evidence").rglob(".*")), [])
+        before = self.record.read_bytes(), stored
+        with self.assertRaises(workspace.WorkspaceError):
+            workspace.archive(self.args)
+        self.assertEqual((self.record.read_bytes(), self.stored.read_bytes()), before)
+
+    def test_post_commit_io_error_retains_pair_without_claiming_rollback(self):
+        write_json = workspace.write_json
+        def fail_after_write(target, record):
+            write_json(target, record)
+            raise OSError("SYNTHETIC-PRIVATE-FAILURE")
+        with patch.object(workspace, "write_json", side_effect=fail_after_write):
+            with self.assertRaisesRegex(workspace.WorkspaceError, "retained") as raised:
+                workspace.archive(self.args)
+        self.assertNotIn("SYNTHETIC-PRIVATE", str(raised.exception))
+        self.assertEqual(json.loads(self.record.read_bytes())["sha256"], hashlib.sha256(self.stored.read_bytes()).hexdigest())
+
     def test_document_sync_or_publication_failure_cleans_staging(self):
         for operation in ("fsync", "replace"):
             with self.subTest(operation=operation):

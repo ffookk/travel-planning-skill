@@ -827,10 +827,22 @@ def archive_document(source: Path, stored: Path, target: Path, record: dict[str,
             os.fsync(output_file.fileno())
         record.update({"bytes": size, "sha256": digest.hexdigest()})
         os.replace(temporary, stored)
+        temporary = None
         published = True
         write_json(target, record)
     except BaseException as error:
         if published:
+            # A replacement can complete before an interruption reaches its caller.
+            try:
+                target.lstat()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                raise WorkspaceError("Document archive commit state could not be checked; its copy was retained for local inspection") from None
+            else:
+                if isinstance(error, (OSError, UnicodeError)):
+                    raise WorkspaceError("Document archive metadata appeared before the write failed; its copy was retained for local inspection") from None
+                raise
             try:
                 stored.unlink(missing_ok=True)
             except OSError:
