@@ -1,0 +1,174 @@
+{
+  "schema": "planning-case/v1",
+  "id": "fare-cap-comparison-equal-cost",
+  "prompt": "The three committed rides use the same synthetic rider, date, eligible payment medium and fare zone; the daily cap applies. Compare capped-payg = min(sum of committed ride fares, cap) with day-pass. Select one cheapest option, allowing ties. Calculation is capped-payg total in AUD. Pending lists unknown price facts; a comparison with unknown eligible cost must defer.",
+  "facts": {
+    "ride-one": {
+      "description": "Synthetic: first committed eligible fare",
+      "value": 12,
+      "unit": "AUD",
+      "status": "verified"
+    },
+    "ride-two": {
+      "description": "Synthetic: second committed eligible fare",
+      "value": 8,
+      "unit": "AUD",
+      "status": "verified"
+    },
+    "ride-three": {
+      "description": "Synthetic: third committed eligible fare",
+      "value": 9,
+      "unit": "AUD",
+      "status": "verified"
+    },
+    "cap": {
+      "description": "Synthetic: applicable daily cap",
+      "value": 18,
+      "unit": "AUD",
+      "status": "verified"
+    },
+    "pass-price": {
+      "description": "Synthetic: comparable day pass covering the same rides",
+      "value": 18,
+      "unit": "AUD",
+      "status": "verified"
+    }
+  },
+  "rules": [
+    {
+      "id": "selection",
+      "kind": "choice",
+      "options": [
+        {
+          "id": "capped-payg",
+          "requires": [],
+          "cost": {
+            "op": "min",
+            "args": [
+              {
+                "op": "sum",
+                "args": [
+                  {
+                    "fact": "ride-one"
+                  },
+                  {
+                    "fact": "ride-two"
+                  },
+                  {
+                    "fact": "ride-three"
+                  }
+                ]
+              },
+              {
+                "fact": "cap"
+              }
+            ]
+          }
+        },
+        {
+          "id": "day-pass",
+          "requires": [],
+          "cost": {
+            "fact": "pass-price"
+          }
+        }
+      ],
+      "minimum": 1,
+      "maximum": 1,
+      "policy": "cheapest"
+    },
+    {
+      "id": "calculation",
+      "kind": "quantity",
+      "expression": {
+        "op": "min",
+        "args": [
+          {
+            "op": "sum",
+            "args": [
+              {
+                "fact": "ride-one"
+              },
+              {
+                "fact": "ride-two"
+              },
+              {
+                "fact": "ride-three"
+              }
+            ]
+          },
+          {
+            "fact": "cap"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pending",
+      "kind": "pending",
+      "facts": [
+        "ride-one",
+        "ride-two",
+        "ride-three",
+        "cap",
+        "pass-price"
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "id": "supported-1",
+      "answers": {
+        "selection": [
+          "capped-payg"
+        ],
+        "calculation": {
+          "value": 18,
+          "unit": "AUD"
+        },
+        "pending": []
+      },
+      "expect": "pass"
+    },
+    {
+      "id": "supported-2",
+      "answers": {
+        "selection": [
+          "day-pass"
+        ],
+        "calculation": {
+          "value": 18,
+          "unit": "AUD"
+        },
+        "pending": []
+      },
+      "expect": "pass"
+    },
+    {
+      "id": "unsupported-1",
+      "answers": {
+        "selection": [
+          "capped-payg"
+        ],
+        "calculation": {
+          "value": 29,
+          "unit": "AUD"
+        },
+        "pending": []
+      },
+      "expect": "fail"
+    },
+    {
+      "id": "unsupported-2",
+      "answers": {
+        "selection": [],
+        "calculation": {
+          "value": 18,
+          "unit": "AUD"
+        },
+        "pending": []
+      },
+      "expect": "fail"
+    }
+  ]
+}
