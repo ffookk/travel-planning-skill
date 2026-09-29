@@ -1,4 +1,4 @@
-<!-- travel-guide: {"id":"seasonal-service-checks","title":"Seasonal Service Dependency Checks","category":"planning","when":"Use when a selected attraction or route depends on a seasonal, weekend-only, maintenance-sensitive, or condition-dependent service.","tags":["seasonal service","maintenance","季节运营","停运"]} -->
+<!-- travel-guide: {"id":"seasonal-service-checks","title":"Seasonal Service Dependency Checks","category":"planning","when":"Use when a selected attraction or route depends on a seasonal, weekend-only, maintenance-sensitive, or condition-dependent service.","tags":["seasonal service","maintenance","季节运营","停运","weekend shuttle","seasonal ferry","lift","guided access","周末接驳","季节渡轮","缆车","导览准入"]} -->
 
 # Seasonal Service Dependency Checks
 
