@@ -6,7 +6,7 @@
 
 Use this guide for a midnight arrival, an overnight connection, or a departure that makes the previous night's location important. An ordinary evening journey with confirmed accommodation and no overnight access dependency does not need this extra analysis.
 
-Request only the local arrival and departure dates, required sleep window, luggage needs, and whether the traveler is willing to leave the terminal. Keep booking references and personal document details out of the plan. Distinguish the calendar date of physical arrival from the accommodation night being purchased.
+Request the local arrival and departure dates, required sleep window, luggage needs, and whether the traveler is willing to leave the terminal. For an international landside stay, establish applicable entry and transit eligibility using only the necessary categories, such as passport-issuing jurisdiction and, when relevant, visa or residence-permit category. The traveler may instead check privately and provide the resulting logistical constraint. Do not collect booking references, document numbers, or scans. Keep the landside option `to_recheck` until its eligibility is established; an open hotel or available transfer does not establish permission to reach it. Distinguish the calendar date of physical arrival from the accommodation night being purchased.
 
 ## Verify the usable night
 
