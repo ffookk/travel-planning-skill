@@ -1,0 +1,170 @@
+{
+  "schema": "planning-case/v1",
+  "id": "dietary-fallback-evidence-replacement-confirmed",
+  "prompt": "A synthetic traveler requires both ingredient exclusion and no shared equipment. Each fact applies to the specific meal service. For every ingredient/equipment boolean, true means the stated exclusion requirement is satisfied, false means it is not satisfied, and null means unconfirmed. Select exactly two qualifying options from restaurant-a, restaurant-b and restaurant-c for a normal meal and fallback. If fewer than two qualify, selection must be [] to defer normal-meal completion; do not invent an exception or claim a single option completes it. Pending lists unknown ingredient/equipment facts. Other identity, opening, route and meal-window fit prerequisites are assumed satisfied; this case checks only the listed dietary conditions and independent fallback evidence. Calculation merely repeats the supplied meal window length in minutes. This is synthetic evidence reasoning, not medical advice.",
+  "facts": {
+    "a-ingredients": {
+      "description": "Synthetic: restaurant a required ingredient exclusion is satisfied for specified service",
+      "value": true,
+      "unit": "boolean",
+      "status": "verified"
+    },
+    "a-equipment": {
+      "description": "Synthetic: restaurant a required no-shared-equipment condition is satisfied for specified service",
+      "value": true,
+      "unit": "boolean",
+      "status": "verified"
+    },
+    "b-ingredients": {
+      "description": "Synthetic: restaurant b required ingredient exclusion is satisfied for specified service",
+      "value": true,
+      "unit": "boolean",
+      "status": "verified"
+    },
+    "b-equipment": {
+      "description": "Synthetic: restaurant b required no-shared-equipment condition is satisfied for specified service",
+      "value": true,
+      "unit": "boolean",
+      "status": "verified"
+    },
+    "c-ingredients": {
+      "description": "Synthetic: restaurant c required ingredient exclusion is satisfied for specified service",
+      "value": true,
+      "unit": "boolean",
+      "status": "verified"
+    },
+    "c-equipment": {
+      "description": "Synthetic: restaurant c required no-shared-equipment condition is satisfied for specified service",
+      "value": null,
+      "unit": "boolean",
+      "status": "unknown"
+    },
+    "meal-window": {
+      "description": "Synthetic: planned meal window",
+      "value": 60,
+      "unit": "minutes",
+      "status": "verified"
+    }
+  },
+  "rules": [
+    {
+      "id": "selection",
+      "kind": "choice",
+      "options": [
+        {
+          "id": "restaurant-a",
+          "requires": [
+            {
+              "fact": "a-ingredients",
+              "equals": true
+            },
+            {
+              "fact": "a-equipment",
+              "equals": true
+            }
+          ]
+        },
+        {
+          "id": "restaurant-b",
+          "requires": [
+            {
+              "fact": "b-ingredients",
+              "equals": true
+            },
+            {
+              "fact": "b-equipment",
+              "equals": true
+            }
+          ]
+        },
+        {
+          "id": "restaurant-c",
+          "requires": [
+            {
+              "fact": "c-ingredients",
+              "equals": true
+            },
+            {
+              "fact": "c-equipment",
+              "equals": true
+            }
+          ]
+        }
+      ],
+      "minimum": 2,
+      "maximum": 2,
+      "policy": "feasible"
+    },
+    {
+      "id": "calculation",
+      "kind": "quantity",
+      "expression": {
+        "fact": "meal-window"
+      }
+    },
+    {
+      "id": "pending",
+      "kind": "pending",
+      "facts": [
+        "a-ingredients",
+        "a-equipment",
+        "b-ingredients",
+        "b-equipment",
+        "c-ingredients",
+        "c-equipment"
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "id": "supported-1",
+      "answers": {
+        "selection": [
+          "restaurant-a",
+          "restaurant-b"
+        ],
+        "calculation": {
+          "value": 60,
+          "unit": "minutes"
+        },
+        "pending": [
+          "c-equipment"
+        ]
+      },
+      "expect": "pass"
+    },
+    {
+      "id": "unsupported-1",
+      "answers": {
+        "selection": [
+          "restaurant-b",
+          "restaurant-c"
+        ],
+        "calculation": {
+          "value": 60,
+          "unit": "minutes"
+        },
+        "pending": [
+          "c-equipment"
+        ]
+      },
+      "expect": "fail"
+    },
+    {
+      "id": "unsupported-2",
+      "answers": {
+        "selection": [
+          "restaurant-b"
+        ],
+        "calculation": {
+          "value": 60,
+          "unit": "minutes"
+        },
+        "pending": [
+          "c-equipment"
+        ]
+      },
+      "expect": "fail"
+    }
+  ]
+}
