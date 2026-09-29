@@ -74,4 +74,6 @@ python3 skills/travel-planning/scripts/assemble_itinerary.py \
 
 ## 扩展接口
 
+Checkpoint assembly preserves the supported optional `meal_id`, `images`, `action_links`, and `fallback` fields from researched `checkpoint_blueprint` entries. Matching `checkpoint_overrides` take precedence, including explicit empty lists. The assembler still generates checkpoint identity, order, and local times; other research-only fields are not copied automatically. Preserved content remains subject to the existing restaurant, image attribution, and link checks.
+
 新增 Agent 或数据源不得直接改最终行程。它必须声明输入与依赖路径、拥有和禁止写入的路径、字段所有权、规范化产出、完成门槛、失败状态和复核时效；主 Agent 继续按相同合并和审查流程处理。
