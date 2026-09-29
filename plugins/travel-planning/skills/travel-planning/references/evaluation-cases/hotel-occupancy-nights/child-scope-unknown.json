@@ -1,0 +1,166 @@
+{
+  "schema": "planning-case/v1",
+  "id": "hotel-occupancy-nights-child-scope-unknown",
+  "prompt": "A synthetic party needs a room at arrival (minutes on one date), not only bag storage. Choose standard-room if its confirmed access time is no later than arrival and its occupancy evidence matches all adults and children; choose prior-night-room only with a held-room guarantee for arrival and matching whole-party occupancy. Child values are evidence flags, not names or birth dates. If neither qualifies defer with []. Calculation always asks for the prior-night quote's purchased nights: checkout-day minus prior-checkin-day, in nights, regardless of selection. Pending lists unknown room-access/occupancy facts. Counts use one synthetic hotel calendar with exclusive checkout.",
+  "facts": {
+    "arrival": {
+      "description": "Synthetic: required room access at 07:00",
+      "value": 420,
+      "unit": "minutes",
+      "status": "verified"
+    },
+    "standard-ready": {
+      "description": "Synthetic: guaranteed standard room access",
+      "value": 900,
+      "unit": "minutes",
+      "status": "verified"
+    },
+    "standard-party": {
+      "description": "Synthetic: standard quote matches all adults and child age bands",
+      "value": true,
+      "unit": "boolean",
+      "status": "verified"
+    },
+    "prior-held": {
+      "description": "Synthetic: prior-night room held through declared arrival",
+      "value": true,
+      "unit": "boolean",
+      "status": "verified"
+    },
+    "prior-party": {
+      "description": "Synthetic: prior-night quote matches all adults and child age bands",
+      "value": null,
+      "unit": "boolean",
+      "status": "unknown"
+    },
+    "prior-checkin-day": {
+      "description": "Synthetic: prior-night quote check-in day index",
+      "value": 2,
+      "unit": "nights",
+      "status": "verified"
+    },
+    "checkout-day": {
+      "description": "Synthetic: exclusive checkout day index",
+      "value": 6,
+      "unit": "nights",
+      "status": "verified"
+    }
+  },
+  "rules": [
+    {
+      "id": "selection",
+      "kind": "choice",
+      "options": [
+        {
+          "id": "standard-room",
+          "requires": [
+            {
+              "left": {
+                "fact": "standard-ready"
+              },
+              "op": "le",
+              "right": {
+                "fact": "arrival"
+              }
+            },
+            {
+              "fact": "standard-party",
+              "equals": true
+            }
+          ]
+        },
+        {
+          "id": "prior-night-room",
+          "requires": [
+            {
+              "fact": "prior-held",
+              "equals": true
+            },
+            {
+              "fact": "prior-party",
+              "equals": true
+            }
+          ]
+        }
+      ],
+      "minimum": 1,
+      "maximum": 1,
+      "policy": "feasible"
+    },
+    {
+      "id": "calculation",
+      "kind": "quantity",
+      "expression": {
+        "op": "sum",
+        "args": [
+          {
+            "fact": "checkout-day"
+          },
+          {
+            "op": "scale",
+            "factor": -1,
+            "arg": {
+              "fact": "prior-checkin-day"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "pending",
+      "kind": "pending",
+      "facts": [
+        "standard-ready",
+        "standard-party",
+        "prior-held",
+        "prior-party"
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "id": "supported-1",
+      "answers": {
+        "selection": [],
+        "calculation": {
+          "value": 4,
+          "unit": "nights"
+        },
+        "pending": [
+          "prior-party"
+        ]
+      },
+      "expect": "pass"
+    },
+    {
+      "id": "unsupported-1",
+      "answers": {
+        "selection": [
+          "prior-night-room"
+        ],
+        "calculation": {
+          "value": 4,
+          "unit": "nights"
+        },
+        "pending": [
+          "prior-party"
+        ]
+      },
+      "expect": "fail"
+    },
+    {
+      "id": "unsupported-2",
+      "answers": {
+        "selection": [],
+        "calculation": {
+          "value": 3,
+          "unit": "nights"
+        },
+        "pending": [
+          "prior-party"
+        ]
+      },
+      "expect": "fail"
+    }
+  ]
+}
