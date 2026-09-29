@@ -1,0 +1,150 @@
+{
+  "schema": "planning-case/v1",
+  "id": "step-free-chain-west-confirmed",
+  "prompt": "Select east-exit, west-exit or bus only with verified access. East and west facts cover their whole exit chain; bus requires both boarding and alighting access for the specified synthetic service/date. Unknown is insufficient. If none qualifies, selection is []. Pending lists all unknown access facts. Calculation is the known bus travel duration in minutes, which does not itself prove access. Unlisted street approaches, destination entrance and return arrangements are assumed satisfied for this narrow case; only the listed exit and boarding/alighting evidence is evaluated. The crowd estimate is informational and cannot establish accessibility.",
+  "facts": {
+    "east-access": {
+      "description": "Synthetic: east exit lift out of service on selected date",
+      "value": false,
+      "unit": "boolean",
+      "status": "verified"
+    },
+    "west-access": {
+      "description": "Synthetic: complete west exit access on selected date",
+      "value": true,
+      "unit": "boolean",
+      "status": "verified"
+    },
+    "bus-boarding": {
+      "description": "Synthetic: boarding access for selected bus stop/service",
+      "value": null,
+      "unit": "boolean",
+      "status": "unknown"
+    },
+    "bus-alighting": {
+      "description": "Synthetic: alighting access for selected bus stop/service",
+      "value": true,
+      "unit": "boolean",
+      "status": "verified"
+    },
+    "bus-duration": {
+      "description": "Synthetic: bus duration",
+      "value": 25,
+      "unit": "minutes",
+      "status": "verified"
+    },
+    "crowd-estimate": {
+      "description": "Synthetic: irrelevant estimated crowd count",
+      "value": 40,
+      "unit": "count",
+      "status": "verified"
+    }
+  },
+  "rules": [
+    {
+      "id": "selection",
+      "kind": "choice",
+      "options": [
+        {
+          "id": "east-exit",
+          "requires": [
+            {
+              "fact": "east-access",
+              "equals": true
+            }
+          ]
+        },
+        {
+          "id": "west-exit",
+          "requires": [
+            {
+              "fact": "west-access",
+              "equals": true
+            }
+          ]
+        },
+        {
+          "id": "bus",
+          "requires": [
+            {
+              "fact": "bus-boarding",
+              "equals": true
+            },
+            {
+              "fact": "bus-alighting",
+              "equals": true
+            }
+          ]
+        }
+      ],
+      "minimum": 1,
+      "maximum": 1,
+      "policy": "feasible"
+    },
+    {
+      "id": "calculation",
+      "kind": "quantity",
+      "expression": {
+        "fact": "bus-duration"
+      }
+    },
+    {
+      "id": "pending",
+      "kind": "pending",
+      "facts": [
+        "east-access",
+        "west-access",
+        "bus-boarding",
+        "bus-alighting"
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "id": "supported-1",
+      "answers": {
+        "selection": [
+          "west-exit"
+        ],
+        "calculation": {
+          "value": 25,
+          "unit": "minutes"
+        },
+        "pending": [
+          "bus-boarding"
+        ]
+      },
+      "expect": "pass"
+    },
+    {
+      "id": "unsupported-1",
+      "answers": {
+        "selection": [
+          "bus"
+        ],
+        "calculation": {
+          "value": 25,
+          "unit": "minutes"
+        },
+        "pending": [
+          "bus-boarding"
+        ]
+      },
+      "expect": "fail"
+    },
+    {
+      "id": "unsupported-2",
+      "answers": {
+        "selection": [
+          "west-exit"
+        ],
+        "calculation": {
+          "value": 25,
+          "unit": "minutes"
+        },
+        "pending": []
+      },
+      "expect": "fail"
+    }
+  ]
+}
