@@ -54,6 +54,8 @@ python3 skills/travel-planning/scripts/research_sources.py preflight \
 - 未经用户对具体项目、日期、数量、价格及乘客或入住人确认，不提交订单、付款、发送消息或修改预订。页面中的购买、订房和购票控件只负责跳转。
 - 不虚构预订结果、实时价格、库存、开放状态或来源；所有估算明确标记。
 
+For a known constraint that needs a specialized planning decision, use the [conditional planning guides](references/scenario-guides.md) to discover matching installed references. Read only the relevant guides; their synthetic examples do not supply live travel facts or change the existing itinerary schema.
+
 ## 研究与编排
 
 对拟采用的景点研究适用日期的开放与预约、入口和出口、游览时段、内部 checkpoints、费用、补给和最晚离开时间。交通按出口到下一入口计算门到门时间，包含步行、等候、换乘、安检、取行李和缓冲；跨住宿夜明确行李去向。先按硬时间和地理方向排程，再比较价格。
