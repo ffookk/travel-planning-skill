@@ -1,0 +1,177 @@
+{
+  "schema": "planning-case/v1",
+  "id": "disruption-alternatives-shuttle-retimed",
+  "prompt": "The original train is cancelled. Evaluate train, shuttle and later-bus independently for the same synthetic date. Train needs operating evidence; each road replacement needs its own capacity evidence and boarding no earlier than arrival. Select one supported alternative or [] if none is established. Pending lists unknown service/capacity facts. Calculation is later-bus boarding minus arrival, in minutes; a positive margin alone does not prove capacity. The selected IDs are evaluation answers, not production itinerary route references.",
+  "facts": {
+    "train-operating": {
+      "description": "Synthetic: original service cancelled",
+      "value": false,
+      "unit": "boolean",
+      "status": "verified"
+    },
+    "shuttle-capacity": {
+      "description": "Synthetic: shuttle capacity for this party/date",
+      "value": true,
+      "unit": "boolean",
+      "status": "verified"
+    },
+    "bus-capacity": {
+      "description": "Synthetic: later bus capacity for this party/date",
+      "value": null,
+      "unit": "boolean",
+      "status": "unknown"
+    },
+    "arrival": {
+      "description": "Synthetic: earliest boarding-point arrival",
+      "value": 1000,
+      "unit": "minutes",
+      "status": "verified"
+    },
+    "shuttle-board": {
+      "description": "Synthetic: shuttle boarding cutoff",
+      "value": 1020,
+      "unit": "minutes",
+      "status": "verified"
+    },
+    "bus-board": {
+      "description": "Synthetic: later bus boarding cutoff",
+      "value": 1080,
+      "unit": "minutes",
+      "status": "verified"
+    }
+  },
+  "rules": [
+    {
+      "id": "selection",
+      "kind": "choice",
+      "options": [
+        {
+          "id": "train",
+          "requires": [
+            {
+              "fact": "train-operating",
+              "equals": true
+            }
+          ]
+        },
+        {
+          "id": "shuttle",
+          "requires": [
+            {
+              "fact": "shuttle-capacity",
+              "equals": true
+            },
+            {
+              "left": {
+                "fact": "arrival"
+              },
+              "op": "le",
+              "right": {
+                "fact": "shuttle-board"
+              }
+            }
+          ]
+        },
+        {
+          "id": "later-bus",
+          "requires": [
+            {
+              "fact": "bus-capacity",
+              "equals": true
+            },
+            {
+              "left": {
+                "fact": "arrival"
+              },
+              "op": "le",
+              "right": {
+                "fact": "bus-board"
+              }
+            }
+          ]
+        }
+      ],
+      "minimum": 1,
+      "maximum": 1,
+      "policy": "feasible"
+    },
+    {
+      "id": "calculation",
+      "kind": "quantity",
+      "expression": {
+        "op": "sum",
+        "args": [
+          {
+            "fact": "bus-board"
+          },
+          {
+            "op": "scale",
+            "factor": -1,
+            "arg": {
+              "fact": "arrival"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "pending",
+      "kind": "pending",
+      "facts": [
+        "train-operating",
+        "shuttle-capacity",
+        "bus-capacity"
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "id": "supported-1",
+      "answers": {
+        "selection": [
+          "shuttle"
+        ],
+        "calculation": {
+          "value": 80,
+          "unit": "minutes"
+        },
+        "pending": [
+          "bus-capacity"
+        ]
+      },
+      "expect": "pass"
+    },
+    {
+      "id": "unsupported-1",
+      "answers": {
+        "selection": [
+          "later-bus"
+        ],
+        "calculation": {
+          "value": 80,
+          "unit": "minutes"
+        },
+        "pending": [
+          "bus-capacity"
+        ]
+      },
+      "expect": "fail"
+    },
+    {
+      "id": "unsupported-2",
+      "answers": {
+        "selection": [
+          "train"
+        ],
+        "calculation": {
+          "value": 80,
+          "unit": "minutes"
+        },
+        "pending": [
+          "bus-capacity"
+        ]
+      },
+      "expect": "fail"
+    }
+  ]
+}
