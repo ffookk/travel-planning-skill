@@ -72,3 +72,17 @@ The successful receipt records exact input, HTML, optional research, and optiona
 Both files are fully staged before publication and each replacement is atomic. Ordinary replacement failures restore previous files; a crash or power loss between two file replacements is not a filesystem transaction, so compare the recorded HTML hash before using a recovered pair. An exceptional rollback failure is reported explicitly and preserves remaining original backups in mode-0600 `.final-delivery-*` files beside the targets for local recovery, without logging their contents or paths.
 
 Successful HTML and receipt files always use owner-only POSIX permissions (`0600`), including when they replace files that previously allowed broader access. Staged originals also remain `0600`. Ordinary rollback restores each replaced file's original bytes and POSIX mode: the original is first moved back, then its mode is restored through the open file descriptor. Broader permissions are never applied to a staged backup or newly generated delivery. This rollback guarantee does not include ownership, ACLs, or timestamps.
+
+## Verify copied or recovered artifacts locally
+
+Run this from the plugin directory to check explicitly supplied files without modifying them, rendering HTML, rerunning an audit, or contacting providers:
+
+```sh
+python3 skills/travel-planning/scripts/verify_final_delivery.py \
+  itinerary-offline.html itinerary-offline.html.final-audit.json \
+  --require-profile private-offline
+```
+
+Renamed or relocated files work; the verifier never discovers paths from the receipt or workspace. Optional `--input itinerary.json`, `--research research.json`, and `--decisions decisions.json` check those exact files against recorded digests. The JSON result distinguishes `matched`, `not_supplied` (a digest exists but its file was omitted), and `not_recorded` (the receipt has no digest). Supplying an unrecorded file fails. Exit status is zero only when the receipt structure, binding, requested profile, and all supplied file hashes match; malformed or mismatched files fail with messages that omit paths and contents. Receipts are limited to 64 KiB and must match the current v1 fields; artifacts are hashed in chunks.
+
+The profile check compares the receipt's declared profile, not HTML behavior. This is an integrity comparison against an unsigned local receipt, not proof of who created it: changing both a file and its receipt can produce a matching pair. Audit time, warning counts, and conflict summaries are structurally validated metadata, not part of the binding digest. Verification does not refresh research, establish authenticity, or make an itinerary safe to share.
