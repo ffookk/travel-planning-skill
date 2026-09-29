@@ -1,10 +1,10 @@
-<!-- travel-guide: {"id":"emergency-meeting-plans","title":"Meeting Plans after Communication Loss","category":"readiness","when":"Unplanned separation or lost communication would leave the party unsure where to regroup.","tags":["communication loss","meeting points","失联集合","应急会合"]} -->
+<!-- travel-guide: {"id":"emergency-meeting-plans","title":"Pre-Separation Meeting Plans","category":"readiness","when":"Use before a trip or planned separation to agree regrouping rules for possible communication loss; not during an active separation, emergency, or evacuation.","tags":["communication loss","meeting points","失联集合","应急会合","pre-trip","pre-separation","行前集合","分离预案"]} -->
 
-# Meeting Plans after Communication Loss
+# Pre-Separation Meeting Plans
 
 ## Activation and limits
 
-Use this guide to agree a regrouping procedure before an unplanned separation or communication failure. It is not a search-and-rescue protocol or a reason to delay emergency assistance. Immediate danger, a missing dependent traveler, or an official evacuation requires the relevant local emergency or venue procedure, not a generic waiting rule.
+Use this guide before travel or planned separation, while the party can still agree a regrouping procedure for possible communication failure. Do not use it to create new shared rules during an active separation or communication-loss incident, even when every traveler is independently mobile. It is not a search-and-rescue protocol or a reason to delay emergency assistance. Immediate danger, a missing dependent traveler, or an official evacuation requires the relevant local emergency or venue procedure, not a generic waiting rule.
 
 ## Minimum functional inputs
 
@@ -24,4 +24,4 @@ Store the operational meeting rule in `planning.readiness[]`, with official sour
 
 ## Synthetic decision example
 
-Two independently mobile adult subgroups lose data inside a fictional museum complex. Their agreed point is the publicly accessible south entrance, with a checked plaza as the closure fallback. Each follows the same preagreed rule instead of searching the other's galleries. If the venue directs evacuation elsewhere, its instruction overrides both meeting points; the plan does not promise that either remains usable.
+Before entering a fictional museum complex, two independently mobile adult subgroups agree to use the publicly accessible south entrance if data is lost, with a checked plaza as the closure fallback. They rehearse the same rule while contact is available, rather than planning to search each other's galleries or negotiate a new meeting point after communication fails. If the venue directs evacuation elsewhere, its instruction overrides both meeting points; the plan does not promise that either remains usable.
