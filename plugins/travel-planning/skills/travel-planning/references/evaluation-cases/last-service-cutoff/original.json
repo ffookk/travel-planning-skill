@@ -1,0 +1,192 @@
+{
+  "schema": "planning-case/v1",
+  "id": "last-service-cutoff-original",
+  "prompt": "Use minutes on one synthetic date. Boarding closes at boarding-close. Latest activity exit is boarding-close minus walk and contingency. Choose short-visit or long-visit only if its end is no later than this cutoff. Calculation is that cutoff in minutes, null when it cannot be established. Pending lists unknown chain durations. An unknown walking time cannot support either activity; defer with [].",
+  "facts": {
+    "boarding-close": {
+      "description": "Synthetic: final boarding cutoff",
+      "value": 1075,
+      "unit": "minutes",
+      "status": "verified"
+    },
+    "walk": {
+      "description": "Synthetic: exit-to-boarding walk",
+      "value": 35,
+      "unit": "minutes",
+      "status": "verified"
+    },
+    "contingency": {
+      "description": "Synthetic: required contingency",
+      "value": 15,
+      "unit": "minutes",
+      "status": "verified"
+    },
+    "short-end": {
+      "description": "Synthetic: short activity exit",
+      "value": 1010,
+      "unit": "minutes",
+      "status": "verified"
+    },
+    "long-end": {
+      "description": "Synthetic: long activity exit",
+      "value": 1045,
+      "unit": "minutes",
+      "status": "verified"
+    }
+  },
+  "rules": [
+    {
+      "id": "selection",
+      "kind": "choice",
+      "options": [
+        {
+          "id": "short-visit",
+          "requires": [
+            {
+              "left": {
+                "fact": "short-end"
+              },
+              "op": "le",
+              "right": {
+                "op": "sum",
+                "args": [
+                  {
+                    "fact": "boarding-close"
+                  },
+                  {
+                    "op": "scale",
+                    "factor": -1,
+                    "arg": {
+                      "fact": "walk"
+                    }
+                  },
+                  {
+                    "op": "scale",
+                    "factor": -1,
+                    "arg": {
+                      "fact": "contingency"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "long-visit",
+          "requires": [
+            {
+              "left": {
+                "fact": "long-end"
+              },
+              "op": "le",
+              "right": {
+                "op": "sum",
+                "args": [
+                  {
+                    "fact": "boarding-close"
+                  },
+                  {
+                    "op": "scale",
+                    "factor": -1,
+                    "arg": {
+                      "fact": "walk"
+                    }
+                  },
+                  {
+                    "op": "scale",
+                    "factor": -1,
+                    "arg": {
+                      "fact": "contingency"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "minimum": 1,
+      "maximum": 1,
+      "policy": "feasible"
+    },
+    {
+      "id": "calculation",
+      "kind": "quantity",
+      "expression": {
+        "op": "sum",
+        "args": [
+          {
+            "fact": "boarding-close"
+          },
+          {
+            "op": "scale",
+            "factor": -1,
+            "arg": {
+              "fact": "walk"
+            }
+          },
+          {
+            "op": "scale",
+            "factor": -1,
+            "arg": {
+              "fact": "contingency"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "pending",
+      "kind": "pending",
+      "facts": [
+        "walk",
+        "contingency"
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "id": "supported-1",
+      "answers": {
+        "selection": [
+          "short-visit"
+        ],
+        "calculation": {
+          "value": 1025,
+          "unit": "minutes"
+        },
+        "pending": []
+      },
+      "expect": "pass"
+    },
+    {
+      "id": "unsupported-1",
+      "answers": {
+        "selection": [
+          "long-visit"
+        ],
+        "calculation": {
+          "value": 1025,
+          "unit": "minutes"
+        },
+        "pending": []
+      },
+      "expect": "fail"
+    },
+    {
+      "id": "unsupported-2",
+      "answers": {
+        "selection": [
+          "short-visit"
+        ],
+        "calculation": {
+          "value": 1040,
+          "unit": "minutes"
+        },
+        "pending": []
+      },
+      "expect": "fail"
+    }
+  ]
+}
