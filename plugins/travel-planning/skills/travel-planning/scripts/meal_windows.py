@@ -10,8 +10,6 @@ from typing import Any
 def check(slot: dict[str, Any], meal: dict[str, Any], day: dict[str, Any], trip: dict[str, Any],
           schedule: Any, parent: dict[str, Any] | None = None) -> tuple[bool, list[str], list[str]]:
     """Return outside-window status, timing errors, and unresolved constraints."""
-    if not meal:
-        return False, [], []
     errors: list[str] = []
     pending: list[str] = []
     slot_day = dict(day)
@@ -30,6 +28,9 @@ def check(slot: dict[str, Any], meal: dict[str, Any], day: dict[str, Any], trip:
             start, end = start.astimezone(location), end.astimezone(location)
     except ValueError as error:
         return False, [str(error)], []
+
+    if not meal:
+        return False, [], []
 
     match = re.fullmatch(r"\s*([0-2]?\d:[0-5]\d)\s*[-–—]\s*([0-2]?\d:[0-5]\d)\s*", str(meal.get("time_window") or ""))
     opening, closing = (schedule.clock(match[1]), schedule.clock(match[2])) if match else (None, None)

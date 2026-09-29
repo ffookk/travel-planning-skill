@@ -87,6 +87,33 @@ class MealExecutionWindowsTest(unittest.TestCase):
             self.assertTrue(self.check({"start_at": "2026-10-18T10:35+08:00", "end_at": end}, "10:35-10:55")[0])
         self.assertTrue(self.check({"time": "10:35"}, "10:35-10:55")[1])
 
+    def test_missing_research_does_not_skip_standalone_execution_bounds(self) -> None:
+        for planning in (None, {"meal_options": []}):
+            for timing in ({"time": "12:00"}, {"time": "12:00", "end_time": "11:30"}):
+                with self.subTest(planning=planning, timing=timing):
+                    data = {"trip": {"title": "Synthetic meal"}, "days": [{"date": "2028-01-01", "events": [
+                        {"id": "meal", "type": "meal", "title": "Synthetic lunch", "meal_id": "missing", **timing}]}]}
+                    if planning is not None:
+                        data["planning"] = planning
+                    before = copy.deepcopy(data)
+                    result = audit.audit(data)
+                    self.assertEqual(result["status"], "fail")
+                    self.assertTrue(any("Meal execution" in message for message in result["blocking"]))
+                    self.assertEqual(data, before)
+
+    def test_missing_research_keeps_valid_standalone_and_embedded_bounds(self) -> None:
+        schedule = audit.render_itinerary.schedule_validation
+        for parent in (None, {"timezone": "Asia/Shanghai"}):
+            for slot in ({"time": "12:00", "end_time": "12:30"},
+                         {"start_at": "2028-01-01T12:00+08:00", "end_at": "2028-01-01T04:30Z", "end_timezone": "Etc/UTC"}):
+                with self.subTest(parent=parent, slot=slot):
+                    original = copy.deepcopy(slot)
+                    self.assertEqual(audit.meal_windows.check(slot, {}, {"date": "2028-01-01"}, {}, schedule, parent), (False, [], []))
+                    self.assertEqual(slot, original)
+        errors = audit.meal_windows.check({"time": "12:00"}, {}, {"date": "2028-01-01"}, {}, schedule,
+                                         {"timezone": "Asia/Shanghai"})[1]
+        self.assertEqual(errors, ["Meal execution requires a start and end time"])
+
     def test_unknown_endpoint_zone_does_not_assume_a_fixed_offset(self) -> None:
         slot = {"start_at": "2026-10-18T10:35+08:00", "end_at": "2026-10-18T02:55Z"}
         outside, errors, pending = self.check(slot, "10:35-10:55")
