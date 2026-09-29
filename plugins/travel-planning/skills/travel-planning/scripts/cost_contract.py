@@ -106,10 +106,34 @@ def quote_count(quote: Any) -> int | None:
     return count
 
 
+def validate_cost_shape(data: Any) -> None:
+    """Check containers used by cost auditing before reading their members."""
+    if not isinstance(data, dict):
+        raise ValueError("Itinerary must be a JSON object")
+
+    def object_array(value: Any, label: str) -> list[dict[str, Any]]:
+        if value is None:
+            return []
+        if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
+            raise ValueError(f"{label} must be an array of objects")
+        return value
+
+    for field in ("trip", "planning"):
+        if data.get(field) is not None and not isinstance(data[field], dict):
+            raise ValueError(f"Itinerary {field} must be an object")
+    planning = data.get("planning") or {}
+    for field in ("transport_edges", "intercity_options"):
+        object_array(planning.get(field), f"Planning {field}")
+    for day in object_array(data.get("days"), "Itinerary days"):
+        for event in object_array(day.get("events"), "Day events"):
+            object_array(event.get("cost_items"), "Event cost_items")
+
+
 def audit_costs(data: dict[str, Any]) -> tuple[list[str], list[str]]:
     blocking: list[str] = []
     warnings: list[str] = []
     try:
+        validate_cost_shape(data)
         count = trip_count(data.get("trip") or {})
     except ValueError as error:
         return [str(error)], warnings

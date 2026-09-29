@@ -74,6 +74,14 @@ def transport_coverage_key(snapshot: dict[str, Any]) -> str | None:
 
 
 def audit(data: dict[str, Any]) -> dict[str, Any]:
+    try:
+        cost_contract.validate_cost_shape(data)
+    except ValueError as error:
+        return {
+            "status": "fail", "blocking": [str(error)], "warnings": [],
+            "checked_event_ids": [],
+            "checked_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        }
     blocking: list[str] = []
     warnings: list[str] = []
     cost_blocking, cost_warnings = cost_contract.audit_costs(data)
