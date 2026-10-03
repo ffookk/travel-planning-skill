@@ -47,6 +47,7 @@ from scripts.runtime_env import (  # noqa: E402
     load_source_environment,
     source_config_file,
 )
+from scripts.runtime_diagnostics import classify_failure, failure_message, http_failure  # noqa: E402
 
 
 OPEN_METEO_GEOCODING = "https://geocoding-api.open-meteo.com/v1/search"
@@ -174,11 +175,11 @@ def request_json(base_url: str, params: dict[str, Any], timeout: int = 20) -> An
         with urlopen(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
     except HTTPError as error:
-        raise SourceError(f"HTTP {error.code}: {base_url}") from error
-    except URLError as error:
-        raise SourceError(f"无法访问 {base_url}: {error.reason}") from error
-    except json.JSONDecodeError as error:
-        raise SourceError(f"来源未返回有效 JSON: {base_url}") from error
+        raise SourceError(http_failure(error.code)[1]) from None
+    except (URLError, OSError):
+        raise SourceError(failure_message("runtime_unavailable")) from None
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise SourceError("Source returned invalid JSON; response content was withheld") from None
 
 
 def post_json(url: str, payload: dict[str, Any], timeout: int = 180) -> Any:
@@ -196,20 +197,11 @@ def post_json(url: str, payload: dict[str, Any], timeout: int = 180) -> Any:
         with urlopen(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
     except HTTPError as error:
-        message = f"HTTP {error.code}: {url}"
-        try:
-            body = json.loads(error.read().decode("utf-8"))
-            detail = body.get("error") or body.get("message")
-            code = body.get("code")
-            if detail:
-                message += f" · {code + ': ' if code else ''}{detail}"
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            pass
-        raise SourceError(message) from error
-    except URLError as error:
-        raise SourceError(f"无法访问 {url}: {error.reason}") from error
-    except json.JSONDecodeError as error:
-        raise SourceError(f"来源未返回有效 JSON: {url}") from error
+        raise SourceError(http_failure(error.code)[1]) from None
+    except (URLError, OSError):
+        raise SourceError(failure_message("runtime_unavailable")) from None
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise SourceError("Source returned invalid JSON; response content was withheld") from None
 
 
 def xhs_base_url() -> str:
@@ -271,9 +263,8 @@ def unwrap_xhs_response(data: Any) -> Any:
     if not isinstance(data, dict):
         raise SourceError("小红书只读服务返回了无效响应")
     if data.get("success") is not True:
-        code = data.get("code") or "UNKNOWN"
         message = data.get("error") or data.get("message") or "请求失败"
-        raise SourceError(f"小红书只读服务 {code}: {message}")
+        raise SourceError(failure_message(classify_failure(str(message))))
     return data.get("data")
 
 
@@ -708,7 +699,7 @@ def _preflight_failure(
         "required": required,
         "status": "unavailable",
         "failure_kind": failure_kind,
-        "message": str(error),
+        "message": str(error) if isinstance(error, (AdapterError, SourceError, SourceEnvironmentError)) else failure_message("unavailable"),
         "latency_ms": round((time.monotonic() - started_at) * 1000),
     }
 
@@ -1234,7 +1225,7 @@ def amap_request(path: str, params: dict[str, Any]) -> dict[str, Any]:
         raise SourceError("未配置高德 Key；请设置 AMAP_API_KEY 或 AMAP_MAPS_API_KEY")
     data = request_json(f"{AMAP_API}{path}", {"key": key, **params})
     if str(data.get("status")) != "1":
-        raise SourceError(f'高德 API 返回错误：{data.get("info") or "unknown"}')
+        raise SourceError(failure_message(classify_failure(str(data.get("info") or ""))))
     return data
 
 

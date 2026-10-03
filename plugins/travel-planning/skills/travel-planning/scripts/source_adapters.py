@@ -35,6 +35,12 @@ from scripts.providers.variflight_mcp import (  # noqa: E402
     command as variflight_command,
     load_config as load_variflight_environment,
 )
+from scripts.runtime_env import process_environment  # noqa: E402
+from scripts.runtime_diagnostics import (  # noqa: E402
+    classify_failure as _classify_failure,
+    failure_message,
+    http_failure,
+)
 
 
 SNAPSHOT_SCHEMA_VERSION = "travel-source-snapshot/v1"
@@ -155,29 +161,9 @@ def provider_capabilities() -> dict[str, dict[str, Any]]:
     return result
 
 
-def _redact(text: str, env: dict[str, str]) -> str:
-    redacted = text
-    for key in (
-        "FLYAI_API_KEY",
-        "FLYAI_SIGN_SECRET",
-        "VARIFLIGHT_API_KEY",
-        "X_VARIFLIGHT_KEY",
-    ):
-        value = env.get(key)
-        if value:
-            redacted = redacted.replace(value, "[REDACTED]")
-    return redacted
-
-
-def _classify_failure(message: str) -> str:
-    lower = message.lower()
-    if any(token in lower for token in ("401", "403", "api key", "apikey", "unauthorized")):
-        return "authorization_failed"
-    if any(token in lower for token in ("429", "quota", "rate limit", "too many requests")):
-        return "quota_exceeded"
-    if any(token in lower for token in ("not found", "enoent", "command not found")):
-        return "runtime_unavailable"
-    return "provider_error"
+def _upstream_error(text: str) -> AdapterError:
+    kind = _classify_failure(text)
+    return AdapterError(kind, failure_message(kind))
 
 
 def _parse_json_output(stdout: str) -> Any:
@@ -205,13 +191,12 @@ def run_json_cli(command: list[str], env: dict[str, str], timeout: int) -> Any:
             text=True,
             timeout=timeout,
         )
-    except subprocess.TimeoutExpired as error:
-        raise AdapterError("timeout", f"供应商查询超过 {timeout} 秒") from error
-    except OSError as error:
-        raise AdapterError("runtime_unavailable", f"无法启动供应商命令：{error}") from error
+    except subprocess.TimeoutExpired:
+        raise AdapterError("timeout", f"供应商查询超过 {timeout} 秒") from None
+    except OSError:
+        raise AdapterError("runtime_unavailable", failure_message("runtime_unavailable")) from None
     if completed.returncode != 0:
-        message = _redact((completed.stderr or completed.stdout).strip(), env)
-        raise AdapterError(_classify_failure(message), message or "供应商命令执行失败")
+        raise _upstream_error(completed.stderr or completed.stdout or "")
     return _parse_json_output(completed.stdout)
 
 
@@ -254,7 +239,7 @@ def _mcp_result_payload(result: dict[str, Any]) -> Any:
             for block in result.get("content", [])
             if isinstance(block, dict)
         ).strip()
-        raise AdapterError(_classify_failure(text), text or "MCP 工具返回错误")
+        raise _upstream_error(text)
     structured = result.get("structuredContent")
     if structured is not None:
         return structured
@@ -303,9 +288,9 @@ def probe_mcp_stdio(
             text=True,
             bufsize=1,
         )
-    except OSError as error:
+    except OSError:
         stderr_file.close()
-        raise AdapterError("runtime_unavailable", f"无法启动 MCP：{error}") from error
+        raise AdapterError("runtime_unavailable", failure_message("runtime_unavailable")) from None
     try:
         _send_message(
             process,
@@ -325,7 +310,7 @@ def probe_mcp_stdio(
         )
         initialized = _read_response(process, 1, timeout)
         if "error" in initialized:
-            raise AdapterError("provider_error", str(initialized["error"]))
+            raise _upstream_error(json.dumps(initialized["error"], ensure_ascii=False))
         _send_message(process, {"jsonrpc": "2.0", "method": "notifications/initialized"})
         _send_message(
             process,
@@ -333,7 +318,7 @@ def probe_mcp_stdio(
         )
         listed = _read_response(process, 2, timeout)
         if "error" in listed:
-            raise AdapterError("provider_error", str(listed["error"]))
+            raise _upstream_error(json.dumps(listed["error"], ensure_ascii=False))
         tools = listed.get("result", {}).get("tools", [])
         names = sorted(
             str(tool["name"])
@@ -358,10 +343,12 @@ def probe_mcp_stdio(
     except AdapterError as error:
         if error.failure_kind == "timeout":
             stderr_file.seek(0)
-            diagnostic = _redact(stderr_file.read().strip(), env)
+            diagnostic = stderr_file.read(4096)
             if process.poll() is not None and diagnostic:
-                raise AdapterError(_classify_failure(diagnostic), diagnostic) from error
+                raise _upstream_error(diagnostic) from None
         raise
+    except (OSError, UnicodeError):
+        raise AdapterError("runtime_unavailable", failure_message("runtime_unavailable")) from None
     finally:
         _stop_mcp_process(process)
         stderr_file.close()
@@ -381,9 +368,9 @@ def call_mcp_stdio(
             text=True,
             bufsize=1,
         )
-    except OSError as error:
+    except OSError:
         stderr_file.close()
-        raise AdapterError("runtime_unavailable", f"无法启动 MCP：{error}") from error
+        raise AdapterError("runtime_unavailable", failure_message("runtime_unavailable")) from None
     try:
         _send_message(
             process,
@@ -400,7 +387,7 @@ def call_mcp_stdio(
         )
         initialized = _read_response(process, 1, timeout)
         if "error" in initialized:
-            raise AdapterError("provider_error", str(initialized["error"]))
+            raise _upstream_error(json.dumps(initialized["error"], ensure_ascii=False))
         _send_message(process, {"jsonrpc": "2.0", "method": "notifications/initialized"})
         _send_message(
             process,
@@ -413,16 +400,17 @@ def call_mcp_stdio(
         )
         response = _read_response(process, 2, timeout)
         if "error" in response:
-            message = _redact(json.dumps(response["error"], ensure_ascii=False), env)
-            raise AdapterError(_classify_failure(message), message)
+            raise _upstream_error(json.dumps(response["error"], ensure_ascii=False))
         return _mcp_result_payload(response.get("result") or {})
     except AdapterError as error:
         if error.failure_kind == "timeout":
             stderr_file.seek(0)
-            diagnostic = _redact(stderr_file.read().strip(), env)
+            diagnostic = stderr_file.read(4096)
             if process.poll() is not None and diagnostic:
-                raise AdapterError(_classify_failure(diagnostic), diagnostic) from error
+                raise _upstream_error(diagnostic) from None
         raise
+    except (OSError, UnicodeError):
+        raise AdapterError("runtime_unavailable", failure_message("runtime_unavailable")) from None
     finally:
         _stop_mcp_process(process)
         stderr_file.close()
@@ -457,7 +445,7 @@ def _mcp_http_exchange(
 ) -> tuple[dict[str, Any] | None, str | None]:
     parsed = urlparse(endpoint)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise AdapterError("invalid_configuration", f"无效的 HTTP MCP 地址：{endpoint}")
+        raise AdapterError("invalid_configuration", "Invalid HTTP MCP endpoint; check its scheme and host")
     headers = {
         "Accept": "application/json, text/event-stream",
         "Content-Type": "application/json",
@@ -478,11 +466,10 @@ def _mcp_http_exchange(
             body = response.read().decode("utf-8", errors="replace")
             returned_session = response.headers.get("Mcp-Session-Id") or session_id
     except HTTPError as error:
-        body = error.read().decode("utf-8", errors="replace")
-        message = body.strip() or f"HTTP {error.code}"
-        raise AdapterError(_classify_failure(f"HTTP {error.code}: {message}"), message) from error
-    except (URLError, OSError) as error:
-        raise AdapterError("runtime_unavailable", f"无法连接 HTTP MCP {endpoint}：{error}") from error
+        kind, message = http_failure(error.code)
+        raise AdapterError(kind, message) from None
+    except (URLError, OSError):
+        raise AdapterError("runtime_unavailable", failure_message("runtime_unavailable")) from None
     return _parse_mcp_http_body(body), returned_session
 
 
@@ -507,7 +494,7 @@ def _initialize_mcp_http(
     if not initialized:
         raise AdapterError("invalid_response", "HTTP MCP initialize 未返回结果")
     if "error" in initialized:
-        raise AdapterError("provider_error", str(initialized["error"]))
+        raise _upstream_error(json.dumps(initialized["error"], ensure_ascii=False))
     _mcp_http_exchange(
         endpoint,
         {"jsonrpc": "2.0", "method": "notifications/initialized"},
@@ -537,7 +524,7 @@ def probe_mcp_http(
     if not listed:
         raise AdapterError("invalid_response", "HTTP MCP tools/list 未返回结果")
     if "error" in listed:
-        raise AdapterError("provider_error", str(listed["error"]))
+        raise _upstream_error(json.dumps(listed["error"], ensure_ascii=False))
     tools = listed.get("result", {}).get("tools", [])
     names = sorted(
         str(tool["name"])
@@ -582,8 +569,7 @@ def call_mcp_http(
     if not response:
         raise AdapterError("invalid_response", f"HTTP MCP 工具 {tool} 未返回结果")
     if "error" in response:
-        message = json.dumps(response["error"], ensure_ascii=False)
-        raise AdapterError(_classify_failure(message), message)
+        raise _upstream_error(json.dumps(response["error"], ensure_ascii=False))
     return _mcp_result_payload(response.get("result") or {})
 
 
@@ -908,7 +894,7 @@ class SourceAdapter(ABC):
             return load_flyai_environment(os.environ.copy())
         if self.spec.provider_id.startswith("variflight_"):
             return load_variflight_environment(os.environ.copy())
-        return os.environ.copy()
+        return process_environment()
 
     @abstractmethod
     def query(

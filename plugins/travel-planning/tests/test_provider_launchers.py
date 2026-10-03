@@ -30,6 +30,26 @@ variflight_launcher = load_module(
 
 
 class ProviderLaunchersTest(unittest.TestCase):
+    def test_all_launchers_drop_unrelated_secrets_and_keep_required_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "sources.local.env"
+            config.write_text("", encoding="utf-8")
+            supplied = {
+                "TRAVEL_SOURCES_CONFIG": str(config), "PATH": "/synthetic/bin", "HOME": directory,
+                "AMAP_API_KEY": "amap-value", "FLYAI_API_KEY": "flyai-value",
+                "VARIFLIGHT_API_KEY": "variflight-value", "PRIVATE_ACCOUNT_TOKEN": "unrelated-value",
+            }
+            for launcher, expected in (
+                (amap_launcher, {"AMAP_API_KEY", "AMAP_MAPS_API_KEY"}),
+                (flyai_cli, {"FLYAI_API_KEY"}),
+                (variflight_launcher, {"VARIFLIGHT_API_KEY"}),
+            ):
+                with self.subTest(launcher=launcher.__name__):
+                    result = launcher.load_config(supplied)
+                    self.assertEqual(set(result), {"PATH", "HOME"} | expected)
+                    self.assertEqual(result["PATH"], supplied["PATH"])
+                    self.assertEqual(result["HOME"], directory)
+
     def test_amap_aliases_existing_web_service_key_for_mcp(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / "sources.local.env"

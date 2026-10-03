@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import os
+import io
 import json
 import sys
 import tempfile
+import traceback
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+from urllib.error import HTTPError, URLError
 
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "skills" / "travel-planning" / "scripts"
@@ -17,6 +20,115 @@ import source_adapters
 
 
 class SourceAdaptersTest(unittest.TestCase):
+    def test_cli_failures_keep_categories_without_echoing_output(self) -> None:
+        for diagnostic, expected in (
+            ("403 unauthorized Cookie: synthetic-secret", "authorization_failed"),
+            ("429 quota private itinerary synthetic-secret", "quota_exceeded"),
+            ("ENOENT /synthetic-secret", "runtime_unavailable"),
+            ("arbitrary account data synthetic-secret", "provider_error"),
+        ):
+            with self.subTest(expected=expected):
+                completed = MagicMock(returncode=1, stderr=diagnostic, stdout="")
+                with patch.object(source_adapters.subprocess, "run", return_value=completed):
+                    with self.assertRaises(source_adapters.AdapterError) as raised:
+                        source_adapters.run_json_cli(["synthetic-cli"], {}, 5)
+                self.assertEqual(raised.exception.failure_kind, expected)
+                self.assertNotIn("synthetic-secret", str(raised.exception))
+                self.assertLess(len(str(raised.exception)), 200)
+
+    def test_mcp_tool_errors_withhold_raw_content(self) -> None:
+        with self.assertRaises(source_adapters.AdapterError) as raised:
+            source_adapters._mcp_result_payload({
+                "isError": True, "content": [{"type": "text", "text": "unauthorized synthetic-secret"}],
+            })
+        self.assertEqual(raised.exception.failure_kind, "authorization_failed")
+        self.assertNotIn("synthetic-secret", str(raised.exception))
+
+    def test_stdio_initialize_list_and_call_errors_withhold_upstream_messages(self) -> None:
+        error = {"error": {"code": 403, "message": "synthetic-secret", "data": {"cookie": "private"}}}
+        for operation in (source_adapters.probe_mcp_stdio, source_adapters.call_mcp_stdio):
+            for responses in ([error], [{"result": {}}, error]):
+                with self.subTest(operation=operation.__name__, responses=len(responses)):
+                    process = MagicMock()
+                    process.poll.return_value = 0
+                    with patch.object(source_adapters.subprocess, "Popen", return_value=process), patch.object(source_adapters, "_send_message"), patch.object(source_adapters, "_read_response", side_effect=responses):
+                        with self.assertRaises(source_adapters.AdapterError) as raised:
+                            if operation is source_adapters.probe_mcp_stdio:
+                                operation(["synthetic-mcp"], {}, 5)
+                            else:
+                                operation(["synthetic-mcp"], "test-tool", {}, {}, 5)
+                    self.assertEqual(raised.exception.failure_kind, "authorization_failed")
+                    self.assertNotIn("synthetic-secret", str(raised.exception))
+
+    def test_stdio_early_exit_diagnostics_are_categorized_without_raw_text(self) -> None:
+        for operation in (source_adapters.probe_mcp_stdio, source_adapters.call_mcp_stdio):
+            with self.subTest(operation=operation.__name__):
+                process = MagicMock()
+                process.poll.return_value = 1
+                def start_process(*args, **kwargs):
+                    kwargs["stderr"].write("429 quota synthetic-secret")
+                    kwargs["stderr"].flush()
+                    return process
+                with patch.object(source_adapters.subprocess, "Popen", side_effect=start_process), patch.object(source_adapters, "_send_message"), patch.object(source_adapters, "_read_response", side_effect=source_adapters.AdapterError("timeout", "Timeout")):
+                    with self.assertRaises(source_adapters.AdapterError) as raised:
+                        if operation is source_adapters.probe_mcp_stdio:
+                            operation(["synthetic-mcp"], {}, 5)
+                        else:
+                            operation(["synthetic-mcp"], "test-tool", {}, {}, 5)
+                self.assertEqual(raised.exception.failure_kind, "quota_exceeded")
+                self.assertNotIn("synthetic-secret", str(raised.exception))
+
+    def test_http_errors_withhold_bodies_urls_tokens_and_exception_chains(self) -> None:
+        for error, expected in (
+            (HTTPError("https://example.test/?token=synthetic-secret", 403, "synthetic-secret", {}, io.BytesIO(b"Cookie: synthetic-secret")), "authorization_failed"),
+            (HTTPError("https://example.test/", 429, "synthetic-secret", {}, io.BytesIO(b"arbitrary private body")), "quota_exceeded"),
+            (URLError("synthetic-secret"), "runtime_unavailable"),
+        ):
+            with self.subTest(expected=expected), patch.object(source_adapters, "urlopen", side_effect=error):
+                try:
+                    source_adapters._mcp_http_exchange("https://example.test/mcp", {"id": 1}, 5, auth_token="private-token")
+                except source_adapters.AdapterError as failure:
+                    self.assertEqual(failure.failure_kind, expected)
+                    self.assertNotIn("synthetic-secret", traceback.format_exc())
+                    self.assertNotIn("private-token", str(failure))
+                else:
+                    self.fail("Expected a categorized HTTP failure")
+
+    def test_cli_launch_and_timeout_errors_do_not_echo_exception_details(self) -> None:
+        for error, expected in (
+            (OSError("synthetic-secret"), "runtime_unavailable"),
+            (source_adapters.subprocess.TimeoutExpired(["synthetic-secret"], 5, output="private output"), "timeout"),
+        ):
+            with self.subTest(expected=expected), patch.object(source_adapters.subprocess, "run", side_effect=error):
+                try:
+                    source_adapters.run_json_cli(["synthetic-cli"], {}, 5)
+                except source_adapters.AdapterError as failure:
+                    self.assertEqual(failure.failure_kind, expected)
+                    self.assertNotIn("synthetic-secret", traceback.format_exc())
+                    self.assertNotIn("private output", str(failure))
+                else:
+                    self.fail("Expected a categorized process failure")
+
+    def test_http_rpc_errors_are_private_at_every_protocol_stage(self) -> None:
+        error = {"error": {"code": 403, "message": "synthetic-secret"}}
+        for responses, operation in (
+            ([(error, None)], "initialize"),
+            ([({"id": 1, "result": {}}, None), (None, None), (error, None)], "list"),
+            ([({"id": 1, "result": {}}, None), (None, None), (error, None)], "call"),
+        ):
+            with self.subTest(operation=operation), patch.object(source_adapters, "_mcp_http_exchange", side_effect=responses):
+                with self.assertRaises(source_adapters.AdapterError) as raised:
+                    if operation == "call":
+                        source_adapters.call_mcp_http("https://example.test/mcp", "test-tool", {}, 5)
+                    else:
+                        source_adapters.probe_mcp_http("https://example.test/mcp", 5)
+                self.assertEqual(raised.exception.failure_kind, "authorization_failed")
+                self.assertNotIn("synthetic-secret", str(raised.exception))
+
+    def test_successful_cli_payload_is_preserved(self) -> None:
+        with patch.object(source_adapters.subprocess, "run", return_value=MagicMock(returncode=0, stdout='{"items": [{"id": "synthetic-offer"}]}')):
+            self.assertEqual(source_adapters.run_json_cli(["synthetic-cli"], {}, 5), {"items": [{"id": "synthetic-offer"}]})
+
     def test_probe_mcp_stdio_initializes_and_lists_expected_tools(self) -> None:
         process = MagicMock()
         process.poll.return_value = 0
