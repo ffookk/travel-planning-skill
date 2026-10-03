@@ -46,7 +46,9 @@ def read_card(path: Path) -> dict[str, Any]:
         if not line.startswith(HEADER_PREFIX) or not line.endswith(HEADER_SUFFIX):
             raise CatalogError("Guide discovery metadata is missing")
         card = json.loads(line[len(HEADER_PREFIX):-len(HEADER_SUFFIX)], object_pairs_hook=unique_object)
-    except (OSError, UnicodeError, json.JSONDecodeError):
+    except CatalogError:
+        raise
+    except (OSError, ValueError, RecursionError):
         raise CatalogError("Guide discovery metadata could not be read") from None
     if not isinstance(card, dict) or set(card) != FIELDS:
         raise CatalogError("Guide discovery metadata has invalid fields")

@@ -58,14 +58,27 @@ class PlanningGuideCatalogTest(unittest.TestCase):
 
     def test_malformed_headers_fail_without_echoing_values_or_paths(self):
         path = self.add()
-        for raw in (b"SYNTHETIC-PRIVATE\n", b"\xff\n", b"x" * (catalog.MAX_HEADER_BYTES + 1),
-                    (catalog.HEADER_PREFIX + '{"id":"a","id":"b"}' + catalog.HEADER_SUFFIX).encode()):
+        cases = (
+            (b"SYNTHETIC-PRIVATE\n", "Guide discovery metadata is missing"),
+            (b"\xff\n", "Guide discovery metadata could not be read"),
+            (b"x" * (catalog.MAX_HEADER_BYTES + 1), "Guide metadata exceeds the discovery size limit"),
+            ((catalog.HEADER_PREFIX + '{"id":"a","id":"b"}' + catalog.HEADER_SUFFIX).encode(),
+             "Guide metadata contains duplicate keys"),
+            ((catalog.HEADER_PREFIX + '{"SYNTHETIC-PRIVATE":' + catalog.HEADER_SUFFIX).encode(),
+             "Guide discovery metadata could not be read"),
+        )
+        for raw, expected in cases:
             with self.subTest(length=len(raw)):
                 path.write_bytes(raw)
                 with self.assertRaises(catalog.CatalogError) as caught:
                     catalog.list_guides(self.root)
+                self.assertEqual(str(caught.exception), expected)
                 self.assertNotIn("SYNTHETIC-PRIVATE", str(caught.exception))
                 self.assertNotIn(str(self.root), str(caught.exception))
+                errors = io.StringIO()
+                with patch.object(catalog, "list_guides", side_effect=lambda **kwargs: [catalog.read_card(path)]), contextlib.redirect_stderr(errors):
+                    self.assertEqual(catalog.main([]), 1)
+                self.assertEqual(errors.getvalue(), expected + "\n")
 
     def test_filename_and_metadata_contract_reject_ambiguous_cards(self):
         for values in ({"id": "different"}, {"id": "../escape"}, {"title": ""}, {"category": "UPPER"},
@@ -77,6 +90,28 @@ class PlanningGuideCatalogTest(unittest.TestCase):
                 path.write_text(catalog.HEADER_PREFIX + json.dumps(card) + catalog.HEADER_SUFFIX, encoding="utf-8")
                 with self.assertRaises(catalog.CatalogError):
                     catalog.list_guides(self.root)
+
+    def test_numeric_and_nested_parser_limits_have_bounded_cli_errors(self):
+        path = self.root / "synthetic-guide.md"
+        payloads = ('{"value":' + '9' * 5000 + '}', '[' * 1500 + '0' + ']' * 1500)
+        for payload in payloads:
+            with self.subTest(length=len(payload)):
+                path.write_text(catalog.HEADER_PREFIX + payload + catalog.HEADER_SUFFIX, encoding="utf-8")
+                errors = io.StringIO()
+                with patch.object(catalog, "list_guides", side_effect=lambda **kwargs: [catalog.read_card(path)]), contextlib.redirect_stderr(errors):
+                    self.assertEqual(catalog.main([]), 1)
+                self.assertNotIn(str(self.root), errors.getvalue())
+                self.assertNotIn(payload, errors.getvalue())
+                self.assertNotIn("Traceback", errors.getvalue())
+                self.assertLess(len(errors.getvalue()), 100)
+
+    def test_recursion_error_is_normalized_on_runtimes_with_other_parser_limits(self):
+        path = self.add()
+        with patch.object(catalog.json, "loads", side_effect=RecursionError("SYNTHETIC-PRIVATE")):
+            with self.assertRaises(catalog.CatalogError) as caught:
+                catalog.read_card(path)
+        self.assertEqual(str(caught.exception), "Guide discovery metadata could not be read")
+        self.assertTrue(caught.exception.__suppress_context__)
 
     def test_symlink_files_and_directories_are_rejected(self):
         target = self.add()
@@ -91,9 +126,15 @@ class PlanningGuideCatalogTest(unittest.TestCase):
             catalog.list_guides(folder_link)
 
     def test_nonregular_markdown_entries_are_rejected(self):
-        (self.root / "synthetic-directory.md").mkdir()
-        with self.assertRaises(catalog.CatalogError):
+        path = self.root / "synthetic-directory.md"
+        path.mkdir()
+        with self.assertRaises(catalog.CatalogError) as caught:
             catalog.list_guides(self.root)
+        self.assertEqual(str(caught.exception), "Guide references must be regular files")
+        errors = io.StringIO()
+        with patch.object(catalog, "list_guides", side_effect=lambda **kwargs: [catalog.read_card(path)]), contextlib.redirect_stderr(errors):
+            self.assertEqual(catalog.main([]), 1)
+        self.assertEqual(errors.getvalue(), "Guide references must be regular files\n")
 
     def test_cli_emits_machine_readable_cards_and_bounded_errors(self):
         output, errors = io.StringIO(), io.StringIO()
