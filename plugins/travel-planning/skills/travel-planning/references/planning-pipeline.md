@@ -70,6 +70,8 @@ python3 skills/travel-planning/scripts/assemble_itinerary.py \
 
 ## 4. 交付
 
+Use the [audited final-delivery entry point](final-delivery.md) for this stage, with the matching workspace and any required conflict decisions. Raw rendering remains available for previews; only the finalizer should write the delivered final HTML and its bound receipt. For private offline delivery, use its `--private-offline` option with an offline-capable renderer, not the raw preview command.
+
 运行渲染器后检查手机和桌面、地图预览与降级、外部链接、图片失败和打印版。交付 `itinerary.json`、`itinerary.html`、审查结果和少量必须由用户处理的预约或复核动作。
 
 ## 扩展接口
