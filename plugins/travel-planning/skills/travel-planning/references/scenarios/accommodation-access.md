@@ -1,4 +1,4 @@
-<!-- travel-guide: {"id":"accommodation-access","title":"Accommodation Access by Actual Room","category":"readiness","when":"A lodging choice depends on specific access features being available in the room and route actually booked.","tags":["accessible accommodation","room features","住宿无障碍","客房适配"]} -->
+<!-- travel-guide: {"id":"accommodation-access","title":"Accommodation Access by Actual Room","category":"readiness","when":"A lodging choice depends on specific access features being available in the room and route actually booked.","tags":["accessible accommodation","room features","住宿无障碍","客房适配","accessible hotel","wheelchair hotel","step-free hotel","无障碍酒店","轮椅 酒店","无台阶酒店","轮椅酒店"]} -->
 
 # Accommodation Access by Actual Room
 
