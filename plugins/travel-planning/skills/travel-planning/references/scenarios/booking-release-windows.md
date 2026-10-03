@@ -21,7 +21,7 @@ Collect the product and official sales channel, target visit date and session, p
 
 Use `planning.booking_tasks[]` with `target_date`, `target_session`, `product`, `quantity`, `release_rule`, `next_action_at`, `deadline`, `priority=book_when_open`, and truthful `status`. Bind attraction tasks through `event_id`, `attraction_id`, and event `booking_task_ids[]`. Preserve evidence in `source_ids` and dated `action_links[]`; an unresolved conversion can also use `planning.readiness[]`. Follow [the existing data contract](../itinerary-schema.md).
 
-Do not treat the event as secured until the user confirms the result. Keep `execution.fallback` executable without the scarce product.
+Do not treat the event as secured until the user confirms the result. For an attraction, keep `execution.fallback` executable without the scarce product. For a transport event, put the executable alternative in the `fallback` field of its linked `planning.transport_edges[]` or `planning.intercity_options[]` record, referenced by the event's `route_id`; transport cards and overviews read that route field rather than attraction execution guidance.
 
 ## Synthetic decision change
 
