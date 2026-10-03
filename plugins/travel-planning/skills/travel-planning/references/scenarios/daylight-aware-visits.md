@@ -1,4 +1,4 @@
-<!-- travel-guide: {"id":"daylight-aware-visits","title":"Daylight-Aware Visits","category":"planning","when":"Use when the purpose or practical completion of an outdoor visit depends on daylight, twilight, sunrise, or sunset at the selected location and date.","tags":["daylight","sunset","日照","日落"]} -->
+<!-- travel-guide: {"id":"daylight-aware-visits","title":"Daylight-Aware Visits","category":"planning","when":"Use when the purpose or practical completion of an outdoor visit depends on daylight, twilight, sunrise, or sunset at the selected location and date.","tags":["daylight","sunset","日照","日落","日出"]} -->
 
 # Daylight-Aware Visits
 
