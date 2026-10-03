@@ -7,6 +7,10 @@ description: 调研和规划需要可靠动态信息的旅行，比较路线与�
 
 将旅行需求转化为可执行的逐日事件流，并交付可独立打开的响应式 HTML 页面和对应 JSON。
 
+## Sensitive-data intake
+
+Before any preflight, search, provider call, delegation, workspace write, or export, assess whether the input is ordinary travel data or is described as confidential, restricted, classified, or requiring no external disclosure. For the latter or an ambiguous sensitivity claim, pause handling the affected material and read the [sensitive-data boundary](../../docs/security/sensitive-data-boundary.md); ask only abstract classification, recipient, and environment questions, never for the payload. Use public or synthetic information for independent work. This Skill does not provide confidential transmission, and these instructions do not enforce runtime isolation. Ordinary travel planning continues under the existing workflow and authorization rules.
+
 ## 路线确认门槛
 
 1. 只收集会显著影响方案的信息：出发地、目的地、日期或天数、人数、预算、节奏、兴趣、住宿位置和硬性限制。除日期、目的地或无障碍安全风险外，缺失信息可用明确的低风险假设补齐。

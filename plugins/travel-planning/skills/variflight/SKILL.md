@@ -12,6 +12,10 @@ description: 使用插件已配置的飞常准 Aviation 与 Tripmatch MCP 查询
 
 航班单项查询优先 Aviation；只有火车或空铁联运才优先 Tripmatch，避免对两个 Server 重复发相同查询。
 
+## Sensitive-data intake
+
+Before any preflight, search, provider call, delegation, workspace write, or export, assess whether the input is ordinary travel data or is described as confidential, restricted, classified, or requiring no external disclosure. For the latter or an ambiguous sensitivity claim, pause handling the affected material and read the [sensitive-data boundary](../../docs/security/sensitive-data-boundary.md); ask only abstract classification, recipient, and environment questions, never for the payload. Use public or synthetic information for independent work. This Skill does not provide confidential transmission, and these instructions do not enforce runtime isolation. Ordinary travel planning continues under the existing workflow and authorization rules.
+
 ## 查询路由
 
 - 城市/机场间直飞：`searchFlightsByDepArr`。

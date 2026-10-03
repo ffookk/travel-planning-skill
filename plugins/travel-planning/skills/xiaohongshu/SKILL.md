@@ -7,6 +7,10 @@ description: 通过插件固定版本的 xpzouying/xiaohongshu-mcp 使用小红�
 
 本 Skill 路由已注册的 `xiaohongshu-mcp` Streamable HTTP 工具。上游是非官方自动化项目，固定为 `v2.5.0`；它自带独立浏览器，不读取或控制用户的 Chrome。
 
+## Sensitive-data intake
+
+Before any preflight, search, provider call, delegation, workspace write, or export, assess whether the input is ordinary travel data or is described as confidential, restricted, classified, or requiring no external disclosure. For the latter or an ambiguous sensitivity claim, pause handling the affected material and read the [sensitive-data boundary](../../docs/security/sensitive-data-boundary.md); ask only abstract classification, recipient, and environment questions, never for the payload. Use public or synthetic information for independent work. This Skill does not provide confidential transmission, and these instructions do not enforce runtime isolation. Ordinary travel planning continues under the existing workflow and authorization rules.
+
 ## 首次使用
 
 在插件根目录运行：
