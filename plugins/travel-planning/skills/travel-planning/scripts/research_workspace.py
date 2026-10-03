@@ -747,7 +747,8 @@ def normalize_sources(payload: Any, task_id: str) -> list[dict[str, Any]]:
         item = dict(source)
         item["id"] = source_id
         item["task_id"] = task_id
-        item["checked_at"] = item.get("checked_at") or now()
+        item["checked_at"] = item.get("checked_at") or None
+        item["recorded_at"] = item.get("recorded_at") or now()
         item["freshness"] = item.get("freshness") or "dynamic"
         if item["freshness"] not in FRESHNESS_CLASSES:
             raise WorkspaceError(f"来源 {source_id} 的 freshness 无效")
@@ -781,6 +782,7 @@ def evidence_record_path(workspace: Path, task_id: str, record_id: str) -> Path:
 
 
 def source_evidence_record(source: dict[str, Any]) -> dict[str, Any]:
+    archived_at = now()
     return {
         "record_version": 1,
         "id": source["id"],
@@ -796,10 +798,11 @@ def source_evidence_record(source: dict[str, Any]) -> dict[str, Any]:
         "location": source.get("location"),
         "topic": source.get("topic"),
         "tags": source.get("tags") or [],
-        "checked_at": source["checked_at"],
+        "checked_at": source.get("checked_at"),
+        "recorded_at": source.get("recorded_at") or archived_at,
         "valid_until": source.get("valid_until"),
         "freshness": source["freshness"],
-        "archived_at": now(),
+        "archived_at": archived_at,
     }
 
 
@@ -821,6 +824,7 @@ def archive(args: argparse.Namespace) -> dict[str, Any]:
     if args.summary and len(args.summary) > 4000:
         raise WorkspaceError("summary 最长 4000 字符；长文档请作为允许留存的文件归档")
 
+    recorded_at = now()
     record: dict[str, Any] = {
         "record_version": 1,
         "id": valid_id(args.record_id, "record_id"),
@@ -834,10 +838,11 @@ def archive(args: argparse.Namespace) -> dict[str, Any]:
         "location": args.location,
         "topic": args.topic,
         "tags": args.tag or [],
-        "checked_at": args.checked_at or now(),
+        "checked_at": args.checked_at or None,
+        "recorded_at": recorded_at,
         "valid_until": args.valid_until,
         "freshness": args.freshness,
-        "archived_at": now(),
+        "archived_at": recorded_at,
     }
     if args.kind == "document":
         if not args.file:
@@ -1315,7 +1320,7 @@ def build_parser() -> argparse.ArgumentParser:
     command.add_argument("--location")
     command.add_argument("--topic")
     command.add_argument("--tag", action="append")
-    command.add_argument("--checked-at")
+    command.add_argument("--checked-at", help="Actual source verification time; omitted means unknown, not the archive time")
     command.add_argument("--valid-until")
     command.add_argument("--freshness", choices=sorted(FRESHNESS_CLASSES), default="dynamic")
     command.set_defaults(handler=archive)

@@ -5,7 +5,9 @@ import json
 import tempfile
 import unittest
 from argparse import Namespace
+from copy import deepcopy
 from pathlib import Path
+from unittest.mock import patch
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "skills" / "travel-planning" / "scripts" / "research_workspace.py"
@@ -196,6 +198,114 @@ class ResearchWorkspaceTest(unittest.TestCase):
         self.assertEqual(merged["source_count"], 1)
         state = json.loads((self.workspace / "state" / "sources.json").read_text(encoding="utf-8"))
         self.assertEqual(state["sources"][0]["id"], "main-route-notice")
+
+    def test_submission_preserves_actual_verification_separately_from_recording(self) -> None:
+        recorded_at = "2026-09-23T11:00:00+10:00"
+        actual_check = "2026-09-20T08:30:00+08:00"
+        assignment = research_workspace.assign(Namespace(
+            workspace=str(self.workspace), task_id="provenance", domain="transport",
+            instructions="Register synthetic source evidence", depends_on=None,
+        ))["assignment"]
+        sources = [
+            {"id": "provenance-missing", "url": "https://example.com/missing"},
+            {"id": "provenance-null", "url": "https://example.com/null", "checked_at": None},
+            {"id": "provenance-empty", "url": "https://example.com/empty", "checked_at": ""},
+            {
+                "id": "provenance-known", "url": "https://example.com/known",
+                "checked_at": actual_check, "title": "Synthetic official notice",
+                "query": {"date": "2026-10-03"}, "tags": ["official"],
+            },
+        ]
+        result_file = self.root / "provenance-result.json"
+        sources_file = self.root / "provenance-sources.json"
+        write_json(result_file, {
+            "schema_version": assignment["result_schema_version"],
+            "template_version": assignment["template_version"],
+            "template_digest": assignment["template_digest"],
+            "status": "complete", "input_revision": assignment["input_revision"],
+            "entities": {"transport_edges": []}, "shared_entities": [],
+            "event_bindings": [], "constraints": [], "unresolved": [],
+            "source_ids": [source["id"] for source in sources],
+        })
+        write_json(sources_file, sources)
+        original_sources = sources_file.read_bytes()
+        original_result = result_file.read_bytes()
+        args = research_workspace.build_parser().parse_args([
+            "submit", "--workspace", str(self.workspace), "--task-id", "provenance",
+            "--result-file", str(result_file), "--sources-file", str(sources_file),
+        ])
+        with patch.object(research_workspace, "now", return_value=recorded_at):
+            args.handler(args)
+
+        persisted = research_workspace.read_jsonl(self.workspace / "sources/provenance.jsonl")
+        for original, registered in zip(sources, persisted):
+            with self.subTest(source_id=original["id"]):
+                self.assertEqual(registered["checked_at"], original.get("checked_at") or None)
+                self.assertEqual(registered["recorded_at"], recorded_at)
+                for field in ("title", "query", "tags"):
+                    if field in original:
+                        self.assertEqual(registered[field], original[field])
+                evidence = research_workspace.read_json(
+                    self.workspace / "evidence/provenance" / f"{original['id']}.json"
+                )
+                self.assertEqual(evidence["checked_at"], registered["checked_at"])
+                self.assertEqual(evidence["recorded_at"], recorded_at)
+                self.assertEqual(evidence["archived_at"], recorded_at)
+                self.assertEqual(evidence["url"], original["url"])
+        self.assertEqual(sources_file.read_bytes(), original_sources)
+        self.assertEqual(result_file.read_bytes(), original_result)
+
+        with patch.object(research_workspace, "now", return_value="2026-09-24T11:00:00+10:00"):
+            research_workspace.merge(Namespace(workspace=str(self.workspace), allow_partial=False))
+        merged = research_workspace.read_json(self.workspace / "state/sources.json")
+        self.assertEqual(merged["sources"], persisted)
+        archives = research_workspace.read_json(self.workspace / "state/archive.json")["records"]
+        self.assertEqual(len(archives), len(sources))
+        self.assertTrue(all(record["recorded_at"] == recorded_at for record in archives))
+
+    def test_archive_cli_does_not_treat_archival_as_verification(self) -> None:
+        recorded_at = "2026-09-23T11:00:00+10:00"
+        actual_check = "2026-09-20T08:30:00+08:00"
+        document = self.root / "synthetic-notice.txt"
+        document.write_text("Synthetic archived notice", encoding="utf-8")
+        for kind in ("link", "note", "document"):
+            for checked_at in (None, actual_check):
+                record_id = f"{kind}-{'known' if checked_at else 'unknown'}"
+                with self.subTest(record_id=record_id):
+                    command = [
+                        "archive", "--workspace", str(self.workspace), "--record-id", record_id,
+                        "--kind", kind, "--title", "Synthetic notice",
+                        "--url", "https://example.com/notice", "--summary", "Synthetic evidence",
+                    ]
+                    if kind == "document":
+                        command.extend(["--file", str(document)])
+                    if checked_at:
+                        command.extend(["--checked-at", checked_at])
+                    args = research_workspace.build_parser().parse_args(command)
+                    with patch.object(research_workspace, "now", return_value=recorded_at):
+                        record = args.handler(args)["record"]
+                    self.assertEqual(record["checked_at"], checked_at)
+                    self.assertEqual(record["recorded_at"], recorded_at)
+                    self.assertEqual(record["archived_at"], recorded_at)
+                    self.assertEqual(
+                        research_workspace.read_json(self.workspace / "evidence/main" / f"{record_id}.json"),
+                        record,
+                    )
+                    if kind == "document":
+                        self.assertEqual((self.workspace / record["stored_path"]).read_bytes(), document.read_bytes())
+
+    def test_source_normalization_preserves_input_and_prior_recording_time(self) -> None:
+        source = {
+            "id": "main-notice", "url": "https://example.com/notice",
+            "recorded_at": "2026-09-21T10:00:00+08:00",
+            "query": {"date": "2026-10-03"}, "tags": ["official"],
+        }
+        original = deepcopy(source)
+        normalized = research_workspace.normalize_sources(source, "main")[0]
+        self.assertEqual(source, original)
+        self.assertIsNone(normalized["checked_at"])
+        self.assertEqual(normalized["recorded_at"], source["recorded_at"])
+        self.assertEqual(research_workspace.normalize_sources(normalized, "main")[0], normalized)
 
     def test_merge_canonicalizes_duplicate_shared_entities(self) -> None:
         for task_id, submitted_at, code, aliases in (

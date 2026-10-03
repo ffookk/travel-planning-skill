@@ -96,6 +96,8 @@ python3 skills/travel-planning/scripts/research_workspace.py submit \
 
 `--sources-file` 接受临时 JSON 对象或数组，提交后写成 `sources/<task_id>.jsonl`。每条来源至少包含带任务前缀的 `id`、标题、HTTPS URL、来源类型和查询时间；脚本同时生成不可覆盖的 `evidence/<task_id>/<source_id>.json`。
 
+Source provenance timestamps are distinct: `checked_at` records an actual source verification supplied by the researcher. If that time is unknown, omit it or use `null`; registration stores `checked_at: null` and must not imply a new verification. `recorded_at` records when a source is registered and is preserved during subsequent normalization. Evidence records also retain `archived_at` for compatibility. Neither archival timestamp is evidence that the source was checked. Existing explicit verification times and source metadata are preserved.
+
 ## 中途归档
 
 发现后续可能引用的来源时立即归档，不依赖聊天上下文：
@@ -114,6 +116,8 @@ python3 skills/travel-planning/scripts/research_workspace.py archive \
 ```
 
 允许归档 PDF、HTML、Markdown、文本、JSON、CSV、DOCX、XLSX 和常见图片，单文件上限 25 MiB。文件入库后记录原名、大小和 SHA-256；是否删除原临时文件由调用方决定。
+
+For `archive`, pass `--checked-at` only when the actual verification time is known. Omitting it leaves `checked_at` unknown while `recorded_at` and `archived_at` record the archival operation. This applies to links, notes, and documents; preserving a document does not verify its contents.
 
 - `freshness=dynamic`：价格、库存、时刻、天气和临时公告，下次必须重查。
 - `freshness=seasonal`：季节玩法和装备，只作相同季节候选。
