@@ -187,7 +187,7 @@
           "items": {"type": "string", "minLength": 1},
           "uniqueItems": true
         },
-        "patches": {"type": "object"},
+        "patches": {"type": "object", "additionalProperties": {"type": "object"}},
         "append": {
           "type": "array",
           "items": {"type": "object"}
