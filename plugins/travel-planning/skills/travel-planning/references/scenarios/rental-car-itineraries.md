@@ -18,7 +18,7 @@ Verify that the vehicle category fits the party and bags; a seat count alone doe
 
 Compare only the days that benefit from a car. A central-city day can change the result once parking, collection detours, and an extra rental day are included. Keep verified charges, estimated operating costs, and refundable deposits distinct; a deposit is not automatically a consumed trip expense. If an essential return process remains unconfirmed, use an earlier staffed return or another transport arrangement.
 
-Record eligibility and return-process checks in `planning.readiness[]`; use `planning.booking_tasks[]` for securing the chosen vehicle and necessary equipment. Represent pickup, driving, and branch-to-station movements in `planning.transport_edges[]`. Put the branch address, return condition, and latest departure from the last stop in `event.details`; place the missed-return alternative in `event.tips`. Use the [existing transport and cost contract](../itinerary-schema.md).
+Record eligibility and return-process checks in `planning.readiness[]`. When authoring `state/itinerary-plan.json`, append tasks for the vehicle and necessary equipment to the plan-level `booking_tasks[]`; the assembler combines them with generated attraction tasks in the output `planning.booking_tasks[]`. Do not put the custom list under the plan's `planning.booking_tasks`, which replaces that combined list. Represent pickup, driving, and branch-to-station movements in `planning.transport_edges[]`. Put the branch address, return condition, and latest departure from the last stop in `event.details`; place the missed-return alternative in `event.tips`. Use the [existing transport and cost contract](../itinerary-schema.md).
 
 ## Synthetic worked scenario
 
