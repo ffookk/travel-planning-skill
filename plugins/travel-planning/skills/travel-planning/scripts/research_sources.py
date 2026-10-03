@@ -8,6 +8,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -252,11 +253,26 @@ def cache_xhs_tokens(feeds: list[dict[str, Any]], query: str) -> None:
         path.parent.chmod(0o700)
     except OSError:
         pass
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(cache, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    temporary.chmod(0o600)
-    temporary.replace(path)
-    path.chmod(0o600)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", prefix=".xhs-tokens-", dir=path.parent, delete=False,
+        ) as stream:
+            temporary = Path(stream.name)
+            if os.name == "posix":
+                os.fchmod(stream.fileno(), 0o600)
+            stream.write(json.dumps(cache, ensure_ascii=False, indent=2) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    except (OSError, UnicodeError):
+        raise SourceError("Cannot write the private token cache; existing cache content was preserved") from None
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                raise SourceError("Cannot remove a private token-cache staging file; check the local cache directory") from None
 
 
 def unwrap_xhs_response(data: Any) -> Any:
