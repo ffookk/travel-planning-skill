@@ -63,6 +63,8 @@
 - 查询失败使用 `travel-source-error/v1`，遵守 `schemas/travel-source-error.schema.json`，不得伪装成空的成功快照。凭证、Cookie、授权头和临时令牌不得进入快照；原始响应只保留 SHA-256 哈希。
 - `items[]` 内的 `offer_id` 非空且唯一。价格同时保留 `amount`、`currency`、`basis` 和原始 `display`；只有供应商实际返回的 HTTPS 地址才能进入 `action_link`。
 - quote 默认 30 分钟、运行状态默认 15 分钟、lookup 默认 24 小时失效。已选候选过期时审查警告，`workflow.phase=final` 时作为阻断项。
+- Snapshot `checked_at` and `expires_at` with UTC offsets are compared as instants; `expires_at` must be strictly later and the snapshot expires at that instant. Existing pairs without offsets retain their relative ordering, but selected snapshots require a source recheck before expiry can be determined: a warning before `final`, a blocker in `final`. Mixed offset-aware and offset-free date-times require explicit offsets; the machine's timezone is never assumed.
+- Calendar dates retain their declared local day. Community references containing a date-only value are compared at calendar-day precision; pairs of full date-times retain their UTC offsets. Hotel check-in/check-out dates and night counts are unchanged.
 - 酒店快照用 `query.requested_occupancy` 保存成人数与房间数；`supplier_capacity_filter_supported=false` 时，即使返回价格也只能称为报价候选。
 - `readiness[].status` 使用 `verified`、`platform_reported`、`estimated`、`to_recheck` 或 `not_applicable`。
 

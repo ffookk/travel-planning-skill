@@ -195,6 +195,7 @@ def audit(data: dict[str, Any]) -> dict[str, Any]:
     warnings = list(dict.fromkeys(warnings))
     now_value = datetime.now().astimezone()
     expired_snapshot_ids: set[str] = set()
+    timezone_unspecified_snapshot_ids: set[str] = set()
     checked_inventory_refs: set[tuple[str, str]] = set()
     coverage_by_query: dict[str, set[int]] = {}
     for snapshot in source_snapshots.values():
@@ -246,14 +247,17 @@ def audit(data: dict[str, Any]) -> dict[str, Any]:
                 lodging_verification_issues.append(
                     f"住宿候选“{candidate.get('id') or '未命名'}”尚未完成酒店全名、城市/行政区、地址和坐标核验"
                 )
-        expires_at = (snapshot.get("freshness") or {}).get("expires_at")
-        if expires_at:
+        if snapshot:
             try:
-                expires = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
-                if expires < now_value:
+                _, expires = render_itinerary.snapshot_freshness_bounds(
+                    snapshot.get("freshness") or {}, snapshot_id,
+                )
+                if expires.utcoffset() is None:
+                    timezone_unspecified_snapshot_ids.add(snapshot_id)
+                elif expires <= now_value:
                     expired_snapshot_ids.add(snapshot_id)
-            except ValueError:
-                pass
+            except ValueError as error:
+                blocking.append(str(error))
         if snapshot.get("product_type") == "train" and (
             candidate.get("country_code") == "CN"
             or (candidate.get("rail_verification") or {}).get("channel") == "12306"
@@ -276,6 +280,16 @@ def audit(data: dict[str, Any]) -> dict[str, Any]:
     if expired_snapshot_ids:
         message = f"已选酒旅报价或运行快照已过期：{'、'.join(sorted(expired_snapshot_ids))}"
         if (data.get("workflow") or {}).get("phase") == "final":
+            blocking.append(message)
+        else:
+            warnings.append(message)
+    if timezone_unspecified_snapshot_ids:
+        message = (
+            "Selected inventory snapshots need UTC offsets before expiry can be checked: "
+            + ", ".join(sorted(timezone_unspecified_snapshot_ids))
+            + "; recheck the source and supply offsets for checked_at and expires_at"
+        )
+        if phase == "final":
             blocking.append(message)
         else:
             warnings.append(message)
@@ -303,6 +317,7 @@ def audit(data: dict[str, Any]) -> dict[str, Any]:
             "snapshot_count": len(source_snapshots),
             "selected_reference_count": len(checked_inventory_refs),
             "expired_snapshot_ids": sorted(expired_snapshot_ids),
+            "timezone_unspecified_snapshot_ids": sorted(timezone_unspecified_snapshot_ids),
             "transport_coverage_gaps": coverage_gaps,
             "lodging_verification_issues": lodging_verification_issues,
         },
