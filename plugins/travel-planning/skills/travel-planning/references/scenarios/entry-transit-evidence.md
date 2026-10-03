@@ -1,4 +1,4 @@
-<!-- travel-guide: {"id":"entry-transit-evidence","title":"Entry and Transit Evidence Chains","category":"readiness","when":"An international route depends on entry or transit eligibility that is not yet established for the actual connection.","tags":["entry requirements","transit evidence","入境核验","中转规则"]} -->
+<!-- travel-guide: {"id":"entry-transit-evidence","title":"Entry and Transit Evidence Chains","category":"readiness","when":"An international route depends on entry or transit eligibility that is not yet established for the actual connection.","tags":["entry requirements","transit evidence","入境核验","中转规则","visa","transit visa","签证","过境签"]} -->
 
 # Entry and Transit Evidence Chains
 
