@@ -21,6 +21,18 @@ assert ASSEMBLER_SPEC and ASSEMBLER_SPEC.loader
 assemble_itinerary = importlib.util.module_from_spec(ASSEMBLER_SPEC)
 ASSEMBLER_SPEC.loader.exec_module(assemble_itinerary)
 
+UNSAFE_WECHAT_GUIDE_URLS = (
+    "https://recipient-check.example\\@mp.weixin.qq.com/s/guide",
+    "https://user@mp.weixin.qq.com/s/guide",
+    "https://user:password@mp.weixin.qq.com/s/guide",
+    "https://@mp.weixin.qq.com/s/guide",
+    "https://mp.weixin.qq.com@recipient-check.example/s/guide",
+    "https://mp.wei\txin.qq.com/s/guide",
+    "https://mp.weixin.qq.com/s/\nguide",
+    "https://mp.weixin.qq.com/s/\rguide",
+    "https://mp.weixin.qq.com/s/\x00guide",
+)
+
 
 def add_inventory_binding(data: dict, expires_at: str = "2099-01-01T10:30:00+08:00") -> str:
     snapshot_id = "0123456789abcdef01234567"
@@ -543,6 +555,66 @@ class RenderItineraryTest(unittest.TestCase):
         }
         with self.assertRaisesRegex(ValueError, "mp.weixin.qq.com"):
             render_itinerary.validate_data(data)
+
+    def test_build_rejects_unsafe_official_wechat_guide_urls(self) -> None:
+        for url in UNSAFE_WECHAT_GUIDE_URLS:
+            with self.subTest(url=url):
+                data = self.load_example()
+                data["planning"]["attractions"][0]["official"]["wechat"] = {
+                    "account_name": "Synthetic reservation account",
+                    "menu_path": "Services > Reservation",
+                    "guide_url": url,
+                    "checked_at": "2026-09-20",
+                }
+                with self.assertRaisesRegex(ValueError, r"official\.wechat\.guide_url.*HTTPS"):
+                    render_itinerary.build(data)
+
+    def test_wechat_action_uses_copy_fallback_for_unsafe_guide_urls(self) -> None:
+        for url in UNSAFE_WECHAT_GUIDE_URLS:
+            with self.subTest(url=url):
+                html = render_itinerary.render_wechat_action({
+                    "account_name": "Synthetic reservation account",
+                    "menu_path": "Services > Reservation",
+                    "guide_url": url,
+                    "checked_at": "2026-09-20",
+                })
+                self.assertNotIn("<a ", html)
+                self.assertNotIn("href=", html)
+                self.assertIn('data-wechat-account="Synthetic reservation account"', html)
+                self.assertIn("复制公众号名称", html)
+
+    def test_official_wechat_guide_preserves_query_in_build_and_direct_render(self) -> None:
+        class WechatLinkCollector(HTMLParser):
+            def __init__(self) -> None:
+                super().__init__()
+                self.links = []
+
+            def handle_starttag(self, tag, attrs) -> None:
+                attributes = dict(attrs)
+                if tag == "a" and "action-link-wechat" in attributes.get("class", "").split():
+                    self.links.append(attributes)
+
+        url = "https://mp.weixin.qq.com/s/synthetic-guide?scene=1&code=a%2Fb%3D#details"
+        wechat = {
+            "account_name": "Synthetic reservation account",
+            "menu_path": "Services > Reservation",
+            "guide_url": url,
+            "checked_at": "2026-09-20",
+        }
+        data = self.load_example()
+        data["planning"]["attractions"][0]["official"]["wechat"] = wechat
+        for entrypoint, html in (
+            ("build", render_itinerary.build(data)),
+            ("direct", render_itinerary.render_wechat_action(wechat)),
+        ):
+            with self.subTest(entrypoint=entrypoint):
+                links = WechatLinkCollector()
+                links.feed(html)
+                self.assertEqual(len(links.links), 1)
+                self.assertEqual(links.links[0]["href"], url)
+                self.assertEqual(links.links[0]["target"], "_blank")
+                self.assertEqual(set(links.links[0]["rel"].split()), {"noopener", "noreferrer"})
+                self.assertIn("scene=1&amp;code=a%2Fb%3D#details", html)
 
     def test_wechat_metadata_requires_account_menu_and_check_time(self) -> None:
         data = self.load_example()
