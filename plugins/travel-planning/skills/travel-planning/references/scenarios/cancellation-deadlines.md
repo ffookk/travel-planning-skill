@@ -19,7 +19,9 @@ Identify the exact product, applicable stay or travel dates, party scope, amount
 
 ## Existing fields, gate, and fallback
 
-Store a concise action and exposure summary in `planning.readiness[]`, with `deadline`, `status`, `checked_at`, `source_ids`, and `action_links[]`. Use an existing `booking_tasks[]` item where a purchase decision already exists; keep the task `action` explicit. Put the execution consequence in the affected event's `details` or `execution.fallback`. Do not add reservation identifiers. See [readiness handling](../trip-readiness.md).
+Store a concise action and exposure summary in `planning.readiness[]`, with `deadline`, `status`, `checked_at`, `source_ids`, and `action_links[]`. Use an existing `booking_tasks[]` item where a purchase decision already exists; keep the task `action` explicit. Also put the actual decision deadline, destination or operator timezone, traveler action, and exposure in the affected lodging or transport event's `details`. For an attraction, use `preparation[]` for the advance action and `execution.fallback` for its execution consequence; attraction `details` and `tips` are hidden. Attach the official follow-up link to that event's `action_links[]`, preserving its other valid actions. The full page does not display standalone readiness records, so those records or an unbound booking task cannot be the only location of the required action.
+
+If no selected event corresponds to the commitment, add an ordinary `note` event on the actual local date and time chosen for the decision, with the deadline, action, exposure, and official link. Do not invent an unrelated timeline time or treat a displayed task as a completed cancellation. Keep reservation identifiers out of all these fields. See [readiness handling](../trip-readiness.md).
 
 If a key term remains unclear, mark it `to_recheck` and retain a viable plan that does not depend on receiving a refund.
 

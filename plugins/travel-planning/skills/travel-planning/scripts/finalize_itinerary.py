@@ -324,7 +324,7 @@ def finalize(input_path: Path, output_path: Path, report_path: Path, *, workspac
             protected.append(decisions_path)
         try:
             conflict_summary = check_conflicts(data, research, decisions, input_sha, research_sha)
-        except (TypeError, KeyError, ValueError) as error:
+        except (AttributeError, TypeError, KeyError, ValueError) as error:
             if isinstance(error, FinalizationError):
                 raise
             raise FinalizationError("Research conflicts or decisions have an invalid structure") from None
@@ -347,7 +347,7 @@ def finalize(input_path: Path, output_path: Path, report_path: Path, *, workspac
         html = (builder(data, private_offline=True) if private_offline else builder(data)).encode("utf-8")
         if canonical(data) != before:
             raise FinalizationError("Audit or rendering changed the loaded itinerary")
-    except (ValueError, TypeError, KeyError, OverflowError) as error:
+    except (AttributeError, ValueError, TypeError, KeyError, OverflowError) as error:
         if isinstance(error, FinalizationError):
             raise
         raise FinalizationError("Audit or rendering could not validate this itinerary; no delivery was published") from None
@@ -378,7 +378,7 @@ def main() -> int:
     except FinalizationError as error:
         print(f"Final delivery refused: {error}", file=sys.stderr)
         return 1
-    except (OSError, ValueError, TypeError, KeyError, RuntimeError):
+    except (AttributeError, OSError, ValueError, TypeError, KeyError, RuntimeError):
         print("Final delivery refused: an input or I/O operation failed", file=sys.stderr)
         return 1
     print(f"Final delivery passed. Binding SHA256: {report['binding_sha256']}")

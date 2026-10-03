@@ -427,6 +427,49 @@ class FinalizeItineraryTest(unittest.TestCase):
             self.assertFalse(self.output.exists())
             self.assertFalse(self.report.exists())
 
+    def test_invalid_nested_execution_preserves_inputs_and_deliveries_through_api_and_cli(self) -> None:
+        secret = "SYNTHETIC-PRIVATE-EXECUTION"
+        event = next(event for day in self.data["days"] for event in day["events"] if event.get("type") == "attraction")
+        event["execution"] = secret
+        self.write(self.input, self.data)
+        self.output.write_bytes(b"existing HTML")
+        self.report.write_bytes(b"existing receipt")
+        before = {path: path.read_bytes() for path in (self.input, self.output, self.report)}
+        for cli in (False, True):
+            with self.subTest(cli=cli):
+                stdout, stderr = io.StringIO(), io.StringIO()
+                with redirect_stdout(stdout), redirect_stderr(stderr):
+                    if cli:
+                        with patch.object(finalizer.sys, "argv", ["finalize", str(self.input), str(self.output), "--report", str(self.report)]):
+                            self.assertEqual(finalizer.main(), 1)
+                    else:
+                        with self.assertRaises(finalizer.FinalizationError) as caught:
+                            self.run_final()
+                        self.assertEqual(str(caught.exception), "Audit or rendering could not validate this itinerary; no delivery was published")
+                self.assertEqual(stdout.getvalue(), "")
+                if cli:
+                    self.assertIn("Final delivery refused:", stderr.getvalue())
+                for private_value in (secret, str(self.root), str(self.input), "Traceback"):
+                    self.assertNotIn(private_value, stdout.getvalue() + stderr.getvalue())
+                self.assertEqual({path: path.read_bytes() for path in before}, before)
+                self.assertEqual(list(self.root.glob(".final-delivery-*")), [])
+
+    def test_cli_outer_structure_error_does_not_echo_exception_payload_or_paths(self) -> None:
+        secret = "SYNTHETIC-PRIVATE-STRUCTURE"
+        self.output.write_bytes(b"existing HTML")
+        self.report.write_bytes(b"existing receipt")
+        before = {path: path.read_bytes() for path in (self.input, self.output, self.report)}
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with patch.object(finalizer.sys, "argv", ["finalize", str(self.input), str(self.output), "--report", str(self.report)]), redirect_stdout(stdout), redirect_stderr(stderr):
+            with patch.object(finalizer, "finalize", side_effect=AttributeError(f"{secret}: {self.input}")):
+                self.assertEqual(finalizer.main(), 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertEqual(stderr.getvalue(), "Final delivery refused: an input or I/O operation failed\n")
+        for private_value in (secret, str(self.root), "Traceback"):
+            self.assertNotIn(private_value, stderr.getvalue())
+        self.assertEqual({path: path.read_bytes() for path in before}, before)
+        self.assertEqual(list(self.root.glob(".final-delivery-*")), [])
+
 
 if __name__ == "__main__":
     unittest.main()

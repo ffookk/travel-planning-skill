@@ -174,6 +174,8 @@ python3 plugins/travel-planning/skills/travel-planning/scripts/research_sources.
 
 每次行程的数据都保存在当前项目的 `.travel-research/<trip-id>/`，不会建立跨行程缓存。最终交付位于：
 
+This per-trip scope covers the research workspace. Provider runtime state, including Xiaohongshu query metadata and note-token caching, can remain in a user-global directory; see the [sensitive-data boundary](plugins/travel-planning/docs/security/sensitive-data-boundary.md) for retention and disclosure limits.
+
 ```text
 .travel-research/<trip-id>/artifacts/itinerary.json
 .travel-research/<trip-id>/artifacts/audit.json

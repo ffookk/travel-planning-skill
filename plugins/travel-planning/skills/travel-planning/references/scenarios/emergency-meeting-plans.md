@@ -20,7 +20,9 @@ Collect anonymous party counts, who must remain accompanied, who can independent
 
 ## Record and fallback
 
-Store the operational meeting rule in `planning.readiness[]`, with official sources and unresolved checks. Use event `details` or `tips` for the relevant point and condition, and existing attraction entrance or exit fields where appropriate. A planned regrouping can be an ordinary `note` event; it must not imply the renderer provides live tracking or emergency communication. Follow [trip readiness](../trip-readiness.md) and the [itinerary schema](../itinerary-schema.md). Unverified access remains `to_recheck` with an actionable official HTTPS link.
+Store the operational meeting rule in `planning.readiness[]`, with official sources and unresolved checks, and put the traveler instructions in visible event fields. For an attraction, use `preparation[]` for agreeing and rehearsing the rule before entry. Put the meeting point, closure fallback, switch condition, and immediate-assistance exceptions in the relevant `execution.checkpoints[].instruction` and `execution.fallback`. Preserve the actual attraction entry and exit anchors; a meeting point is not automatically an entrance or exit. Do not rely on attraction `details` or `tips`, which are hidden, or on the standalone readiness record, which the full page does not display.
+
+A scheduled regrouping outside the attraction can use an ordinary `note` event on its actual destination-local date and time, with the rule and conditions in `details` or `tips`. Non-attraction events may also use those visible fields. Keep the plan within its pre-separation scope; no event implies live tracking or emergency communication. Follow [trip readiness](../trip-readiness.md) and the [itinerary schema](../itinerary-schema.md). Unverified access remains `to_recheck` with an actionable official HTTPS link in readiness and the relevant event's `action_links[]`, preserving its other valid actions.
 
 ## Synthetic decision example
 

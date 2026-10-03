@@ -145,7 +145,9 @@ def audit(data: dict[str, Any]) -> dict[str, Any]:
         events = day.get("events") or []
         day_name = day.get("date") or day.get("label") or "未命名日期"
         previous_end: int | None = None
+        timed_event_groups: list[list[tuple[int, int, dict[str, Any]]]] = []
         timed_events: list[tuple[int, int, dict[str, Any]]] = []
+        previous_clock_key = None
         for event in events:
             temporal_event = schedule.dated(event) or schedule.timezone_name(event, day, data.get("trip") or {}) is not None
             if event.get("id"):
@@ -199,9 +201,28 @@ def audit(data: dict[str, Any]) -> dict[str, Any]:
                 blocking.append(f"{day_name} 事件“{event.get('title') or '未命名'}”与前一事件时间重叠或顺序倒置")
             if not temporal_event and end is not None and end < start:
                 blocking.append(f"{day_name} 事件“{event.get('title') or '未命名'}”的 end_time 早于 time")
-            crosses_date = schedule.dated(event) and str(event.get("start_at"))[:10] != str(event.get("end_at"))[:10]
-            if not crosses_date and (end is None or end >= start):
+            # Meal coverage can only span a continuous sequence of compatible
+            # local clocks. Journey endpoints in different dates/offsets must
+            # not join the departure and arrival schedules into one clock range.
+            clock_key = None
+            try:
+                local_start, local_end = schedule.window(event, day, data.get("trip") or {})
+                if local_start is not None and (local_end is None or (
+                    local_start.date() == local_end.date() and local_start.utcoffset() == local_end.utcoffset()
+                )):
+                    clock_key = (local_start.date(), local_start.utcoffset())
+            except ValueError:
+                pass  # The temporal audit above already records invalid times.
+            if clock_key is None or (end is not None and end < start):
+                timed_events = []
+            else:
+                if not timed_events or clock_key != previous_clock_key:
+                    if previous_clock_key is not None and clock_key != previous_clock_key:
+                        warnings.append(f"{day_name}: meal coverage across different local clock contexts needs manual recheck")
+                    timed_events = []
+                    timed_event_groups.append(timed_events)
                 timed_events.append((start, end if end is not None else start, event))
+            previous_clock_key = clock_key
             previous_end = None if temporal_event else end if end is not None else start
 
             if event.get("type") == "meal" and event.get("meal_id"):
@@ -219,20 +240,19 @@ def audit(data: dict[str, Any]) -> dict[str, Any]:
             if found:
                 warnings.append(f"{day_name} 事件“{event.get('title') or '未命名'}”含汇报式措辞：{'、'.join(found)}")
 
-        if not timed_events:
-            continue
-        day_start = min(start for start, _, _ in timed_events)
-        day_end = max(end for _, end, _ in timed_events)
         exemptions = day.get("meal_exemptions") or {}
-        for meal_type, center in (("午餐", 12 * 60 + 30), ("晚餐", 19 * 60)):
-            if not (day_start <= center <= day_end) or exemptions.get(meal_type):
-                continue
-            has_meal = any(
-                event.get("type") == "meal" and (meals.get(event.get("meal_id")) or {}).get("meal_type") == meal_type
-                for _, _, event in timed_events
-            )
-            if not has_meal:
-                blocking.append(f"{day_name} 跨过{meal_type}窗口但没有绑定 meal_id 的{meal_type}事件")
+        for timed_events in timed_event_groups:
+            day_start = min(start for start, _, _ in timed_events)
+            day_end = max(end for _, end, _ in timed_events)
+            for meal_type, center in (("午餐", 12 * 60 + 30), ("晚餐", 19 * 60)):
+                if not (day_start <= center <= day_end) or exemptions.get(meal_type):
+                    continue
+                has_meal = any(
+                    event.get("type") == "meal" and (meals.get(event.get("meal_id")) or {}).get("meal_type") == meal_type
+                    for _, _, event in timed_events
+                )
+                if not has_meal:
+                    blocking.append(f"{day_name} 跨过{meal_type}窗口但没有绑定 meal_id 的{meal_type}事件")
 
     blocking = list(dict.fromkeys(blocking))
     unused_meals = sorted(str(meal_id) for meal_id in meals if meal_id not in used_meal_ids)

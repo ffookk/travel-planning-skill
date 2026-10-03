@@ -30,6 +30,7 @@ def write_private_text(path: Path, text: str) -> None:
             os.fsync(stream.fileno())
         check_target(path)
         os.replace(temporary, path)
+        temporary = None
     finally:
         if descriptor is not None:
             os.close(descriptor)

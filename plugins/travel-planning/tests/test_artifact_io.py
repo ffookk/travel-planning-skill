@@ -137,6 +137,44 @@ class ArtifactIOTest(unittest.TestCase):
                 self.assertEqual(self.mode(output), 0o640)
                 self.assertEqual(set(self.root.iterdir()), before)
 
+    def test_cli_success_does_not_unlink_a_recreated_staging_name(self):
+        replace = os.replace
+        for name, module, arguments, expected in self.cases():
+            with self.subTest(command=name):
+                output = self.root / f"reused-stage-{name}.out"
+                recreated = []
+
+                def recreate_after_replace(source, target):
+                    replace(source, target)
+                    path = Path(source)
+                    path.write_bytes(b"Synthetic file owned by a later operation")
+                    recreated.append(path)
+
+                with patch.object(module.artifact_io.os, "replace", side_effect=recreate_after_replace):
+                    self.run_cli(module, arguments(output))
+                self.assertEqual(output.read_bytes(), expected.encode("utf-8"))
+                self.assertEqual(len(recreated), 1)
+                self.assertEqual(recreated[0].read_bytes(), b"Synthetic file owned by a later operation")
+
+    def test_failed_replace_still_cleans_the_owned_staging_file(self):
+        output = self.root / "replacement-failure.txt"
+        output.write_bytes(b"previous artifact")
+        staged = []
+
+        def fail_before_replace(source, target):
+            path = Path(source)
+            staged.append(path)
+            self.assertEqual(path.read_bytes(), b"Synthetic replacement")
+            self.assertEqual(Path(target), output)
+            raise OSError("Synthetic replacement failure")
+
+        with patch.object(artifact_io.os, "replace", side_effect=fail_before_replace):
+            with self.assertRaisesRegex(OSError, "Synthetic replacement failure"):
+                artifact_io.write_private_text(output, "Synthetic replacement")
+        self.assertEqual(len(staged), 1)
+        self.assertFalse(staged[0].exists())
+        self.assertEqual(output.read_bytes(), b"previous artifact")
+
     def test_cli_outputs_refuse_symlinks_and_directories(self):
         victim = self.root / "synthetic-other-file"
         victim.write_bytes(b"unrelated content")

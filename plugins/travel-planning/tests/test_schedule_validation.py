@@ -54,6 +54,59 @@ class ScheduleValidationTest(unittest.TestCase):
         data["days"].append({"date": "2026-10-17", "events": [dated_event("2026-10-17T05:30:00-07:00", "2026-10-17T06:30:00-07:00", id="event-2")]})
         self.assertIn("actual event times overlap", self.messages(data))
 
+    def test_offset_changing_journey_meals_warn_for_earlier_and_later_arrival_clocks(self) -> None:
+        for arrival in ("06:00", "14:00"):
+            with self.subTest(arrival=arrival):
+                data = itinerary([dated_event(
+                    "2026-10-17T10:00+11:00", f"2026-10-17T{arrival}-07:00",
+                    timezone="Australia/Sydney", end_timezone="America/Los_Angeles",
+                )])
+                before = copy.deepcopy(data)
+                result = audit_module.audit(data)
+                self.assertEqual(result["blocking"], [])
+                self.assertTrue(any("meal coverage" in value and "manual recheck" in value for value in result["warnings"]))
+                self.assertEqual(data, before)
+
+    def test_same_clock_meal_coverage_still_blocks_across_a_local_gap(self) -> None:
+        for events in (
+            [dated_event("2026-10-17T10:00+11:00", "2026-10-17T14:00+11:00", timezone="Australia/Sydney")],
+            [dated_event("2026-10-17T09:00+11:00", "2026-10-17T10:00+11:00", id="before"),
+             dated_event("2026-10-17T14:00+11:00", "2026-10-17T15:00+11:00", id="after")],
+        ):
+            with self.subTest(events=events):
+                self.assertIn("跨过午餐窗口", self.messages(itinerary(events)))
+
+    def test_journey_or_changed_clock_boundary_separates_local_meal_coverage(self) -> None:
+        before = dated_event("2026-10-17T09:00+11:00", "2026-10-17T10:00+11:00", id="before")
+        journey = dated_event("2026-10-17T10:00+11:00", "2026-10-17T14:00-07:00", id="journey")
+        after = dated_event("2026-10-17T14:00-07:00", "2026-10-17T15:00-07:00", id="after")
+        for events in ([before, journey, after], [before, after]):
+            with self.subTest(events=events):
+                data = itinerary(events)
+                result = audit_module.audit(data)
+                self.assertEqual(result["blocking"], [])
+                self.assertTrue(any("meal coverage" in value and "manual recheck" in value for value in result["warnings"]))
+
+    def test_local_segments_still_require_meals_before_and_after_a_journey(self) -> None:
+        for events in (
+            [dated_event("2026-10-17T09:00+11:00", "2026-10-17T13:00+11:00", id="before"),
+             dated_event("2026-10-17T13:00+11:00", "2026-10-17T14:00-07:00", id="journey"),
+             dated_event("2026-10-17T14:00-07:00", "2026-10-17T15:00-07:00", id="after")],
+            [dated_event("2026-10-17T09:00+11:00", "2026-10-17T10:00+11:00", id="before"),
+             dated_event("2026-10-17T10:00+11:00", "2026-10-17T11:00-07:00", id="journey"),
+             dated_event("2026-10-17T11:00-07:00", "2026-10-17T14:00-07:00", id="after")],
+        ):
+            with self.subTest(events=events):
+                result = audit_module.audit(itinerary(events))
+                self.assertTrue(any("跨过午餐窗口" in value for value in result["blocking"]))
+                self.assertTrue(any("meal coverage" in value for value in result["warnings"]))
+
+    def test_invalid_dated_times_are_not_downgraded_to_meal_recheck_warnings(self) -> None:
+        data = itinerary([dated_event("2026-10-17T10:00+11:00", "2026-02-30T14:00-07:00")])
+        result = audit_module.audit(data)
+        self.assertEqual(result["status"], "fail")
+        self.assertTrue(any("invalid dated time" in value for value in result["blocking"]))
+
     def test_aware_chronology_is_compared_across_day_boundaries(self) -> None:
         data = itinerary([dated_event("2026-10-17T23:30+08:00", "2026-10-18T02:00+08:00")])
         data["days"].append({"date": "2026-10-18", "events": [dated_event("2026-10-18T01:00+08:00", "2026-10-18T02:30+08:00", id="event-2")]})
