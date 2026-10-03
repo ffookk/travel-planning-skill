@@ -1,5 +1,7 @@
 # 餐厅候选研究与路线适配
 
+Execution times for both standalone meals and attraction checkpoints with `meal_id` are checked against the researched meal window; see [Meal execution windows](meal-execution-windows.md) for exact intervals, timezone inheritance, and unresolved timing constraints.
+
 餐饮是路线确认后的前置研究。先稳定景点出入口、住宿锚点和交通骨架，再建立餐窗、发现餐厅、计算绕行并排序；未完成本流程的正餐不能进入 `confirmed_planning`。
 
 ## 三阶段流水线

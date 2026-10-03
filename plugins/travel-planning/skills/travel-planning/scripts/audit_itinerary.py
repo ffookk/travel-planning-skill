@@ -11,6 +11,12 @@ from pathlib import Path
 from typing import Any
 
 
+MEAL_SPEC = importlib.util.spec_from_file_location("travel_meal_windows", Path(__file__).with_name("meal_windows.py"))
+assert MEAL_SPEC and MEAL_SPEC.loader
+meal_windows = importlib.util.module_from_spec(MEAL_SPEC)
+MEAL_SPEC.loader.exec_module(meal_windows)
+
+
 RENDERER_PATH = Path(__file__).with_name("render_itinerary.py")
 SPEC = importlib.util.spec_from_file_location("render_itinerary", RENDERER_PATH)
 assert SPEC and SPEC.loader
@@ -115,6 +121,18 @@ def audit(data: dict[str, Any]) -> dict[str, Any]:
     checked_event_ids: list[str] = []
     used_meal_ids: set[str] = set()
 
+    def check_meal_slot(slot: dict[str, Any], day: dict[str, Any], parent: dict[str, Any] | None = None) -> None:
+        meal_id = str(slot["meal_id"])
+        outside, errors, pending = meal_windows.check(
+            slot, meals.get(meal_id) or {}, day, data.get("trip") or {}, schedule, parent,
+        )
+        day_name = day.get("date") or day.get("label") or "未命名日期"
+        title = slot.get("title") or slot.get("name") or meal_id
+        if outside:
+            blocking.append(f"{day_name} 餐饮事件“{title}”的事件时间超出 meal_option.time_window")
+        blocking.extend(f"{day_name} {title}: {message}" for message in errors)
+        warnings.extend(f"{day_name} {title}: {message}" for message in pending)
+
     for day in data.get("days") or []:
         events = day.get("events") or []
         day_name = day.get("date") or day.get("label") or "未命名日期"
@@ -160,6 +178,7 @@ def audit(data: dict[str, Any]) -> dict[str, Any]:
                             blocking.append(f"{day_name} 景点节点“{point_name}”的图片缺少 alt、作者/机构、许可或原始页面")
                     if point.get("meal_id"):
                         used_meal_ids.add(str(point["meal_id"]))
+                        check_meal_slot(point, day, event)
             start = minute_of(event.get("time"))
             end = minute_of(event.get("end_time"))
             if schedule.dated(event):
@@ -180,14 +199,7 @@ def audit(data: dict[str, Any]) -> dict[str, Any]:
             if event.get("type") == "meal" and event.get("meal_id"):
                 meal_id = str(event["meal_id"])
                 used_meal_ids.add(meal_id)
-                meal = meals.get(meal_id) or {}
-                allowed = minute_range(meal.get("time_window"))
-                if end is None:
-                    blocking.append(f"{day_name} 餐饮事件“{event.get('title') or meal_id}”必须提供 end_time")
-                elif allowed and (crosses_date or start < allowed[0] or end > allowed[1]):
-                    blocking.append(
-                        f"{day_name} 餐饮事件“{event.get('title') or meal_id}”的事件时间超出 meal_option.time_window"
-                    )
+                check_meal_slot(event, day)
 
             candidate_id = event.get("route_id") if event.get("type") == "transport" else event.get("lodging_id") if event.get("type") == "lodging" else None
             candidate = inventory_candidates.get(str(candidate_id or "")) or {}
