@@ -118,6 +118,21 @@ class TokenCacheStagingTest(unittest.TestCase):
                 self.assertEqual(self.cache.read_bytes(), before)
                 self.assertEqual(list(self.cache.parent.iterdir()), [self.cache])
 
+    def test_success_does_not_unlink_a_recreated_staging_name(self):
+        replace = os.replace
+        recreated = []
+        def recreate_after_replace(source, target):
+            result = replace(source, target)
+            unrelated = Path(source)
+            unrelated.write_bytes(b"Synthetic file owned by a later operation")
+            recreated.append(unrelated)
+            return result
+        with patch.object(os, "replace", side_effect=recreate_after_replace):
+            self.save()
+        self.assertEqual(len(recreated), 1)
+        self.assertEqual(recreated[0].read_bytes(), b"Synthetic file owned by a later operation")
+        self.assertIn("new", json.loads(self.cache.read_text(encoding="utf-8"))["notes"])
+
     def test_failed_first_update_leaves_no_cache_or_staging_file(self):
         self.cache.unlink()
         with patch.object(os, "replace", side_effect=OSError("Synthetic failure")):

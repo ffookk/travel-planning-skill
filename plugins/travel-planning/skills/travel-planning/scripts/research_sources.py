@@ -265,6 +265,7 @@ def cache_xhs_tokens(feeds: list[dict[str, Any]], query: str) -> None:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
+        temporary = None
     except (OSError, UnicodeError):
         raise SourceError("Cannot write the private token cache; existing cache content was preserved") from None
     finally:
