@@ -1,0 +1,211 @@
+{
+  "schema": "planning-case/v1",
+  "id": "connection-chain-tight",
+  "prompt": "All times are minutes after midnight on one synthetic local date, with no offset change. Choose one feasible connection, early or later, only when landside eligibility is confirmed. Ready time equals arrival + baggage + transfer + security + contingency and must be at or before boarding closes. Return it as calculation in minutes. List unknown eligibility in pending; defer selection with [] if no option qualifies.",
+  "facts": {
+    "arrival": {
+      "description": "Synthetic: flight arrival",
+      "value": 600,
+      "unit": "minutes",
+      "status": "verified"
+    },
+    "baggage": {
+      "description": "Synthetic: baggage and exit duration",
+      "value": 35,
+      "unit": "minutes",
+      "status": "verified"
+    },
+    "transfer": {
+      "description": "Synthetic: terminal transfer duration",
+      "value": 60,
+      "unit": "minutes",
+      "status": "verified"
+    },
+    "security": {
+      "description": "Synthetic: security duration",
+      "value": 45,
+      "unit": "minutes",
+      "status": "verified"
+    },
+    "contingency": {
+      "description": "Synthetic: required contingency",
+      "value": 20,
+      "unit": "minutes",
+      "status": "verified"
+    },
+    "early-close": {
+      "description": "Synthetic: early boarding closes",
+      "value": 750,
+      "unit": "minutes",
+      "status": "verified"
+    },
+    "later-close": {
+      "description": "Synthetic: later boarding closes",
+      "value": 900,
+      "unit": "minutes",
+      "status": "verified"
+    },
+    "landside-eligible": {
+      "description": "Synthetic: applicable landside transit permission for this traveler category and itinerary; no document identifiers",
+      "value": true,
+      "unit": "boolean",
+      "status": "verified"
+    }
+  },
+  "rules": [
+    {
+      "id": "selection",
+      "kind": "choice",
+      "options": [
+        {
+          "id": "early",
+          "requires": [
+            {
+              "fact": "landside-eligible",
+              "equals": true
+            },
+            {
+              "left": {
+                "op": "sum",
+                "args": [
+                  {
+                    "fact": "arrival"
+                  },
+                  {
+                    "fact": "baggage"
+                  },
+                  {
+                    "fact": "transfer"
+                  },
+                  {
+                    "fact": "security"
+                  },
+                  {
+                    "fact": "contingency"
+                  }
+                ]
+              },
+              "op": "le",
+              "right": {
+                "fact": "early-close"
+              }
+            }
+          ]
+        },
+        {
+          "id": "later",
+          "requires": [
+            {
+              "fact": "landside-eligible",
+              "equals": true
+            },
+            {
+              "left": {
+                "op": "sum",
+                "args": [
+                  {
+                    "fact": "arrival"
+                  },
+                  {
+                    "fact": "baggage"
+                  },
+                  {
+                    "fact": "transfer"
+                  },
+                  {
+                    "fact": "security"
+                  },
+                  {
+                    "fact": "contingency"
+                  }
+                ]
+              },
+              "op": "le",
+              "right": {
+                "fact": "later-close"
+              }
+            }
+          ]
+        }
+      ],
+      "minimum": 1,
+      "maximum": 1,
+      "policy": "feasible"
+    },
+    {
+      "id": "calculation",
+      "kind": "quantity",
+      "expression": {
+        "op": "sum",
+        "args": [
+          {
+            "fact": "arrival"
+          },
+          {
+            "fact": "baggage"
+          },
+          {
+            "fact": "transfer"
+          },
+          {
+            "fact": "security"
+          },
+          {
+            "fact": "contingency"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pending",
+      "kind": "pending",
+      "facts": [
+        "landside-eligible"
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "id": "supported-1",
+      "answers": {
+        "selection": [
+          "later"
+        ],
+        "calculation": {
+          "value": 760,
+          "unit": "minutes"
+        },
+        "pending": []
+      },
+      "expect": "pass"
+    },
+    {
+      "id": "unsupported-1",
+      "answers": {
+        "selection": [
+          "early"
+        ],
+        "calculation": {
+          "value": 760,
+          "unit": "minutes"
+        },
+        "pending": []
+      },
+      "expect": "fail"
+    },
+    {
+      "id": "unsupported-2",
+      "answers": {
+        "selection": [
+          "later"
+        ],
+        "calculation": {
+          "value": 740,
+          "unit": "minutes"
+        },
+        "pending": []
+      },
+      "expect": "fail"
+    }
+  ]
+}
