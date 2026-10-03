@@ -38,6 +38,12 @@ OUTPUT_COLLECTIONS = (
 )
 
 
+ARTIFACT_SPEC = importlib.util.spec_from_file_location("travel_artifact_io", Path(__file__).with_name("artifact_io.py"))
+assert ARTIFACT_SPEC and ARTIFACT_SPEC.loader
+artifact_io = importlib.util.module_from_spec(ARTIFACT_SPEC)
+ARTIFACT_SPEC.loader.exec_module(artifact_io)
+
+
 class AssemblyError(ValueError):
     """Raised when a plan cannot be assembled safely."""
 
@@ -785,8 +791,7 @@ def main() -> int:
     plan_path = args.plan.resolve() if args.plan else workspace_input(workspace, "state/itinerary-plan.json", "Default plan")
     output = args.output.resolve() if args.output else workspace / "artifacts" / "itinerary.json"
     payload = assemble(workspace, plan_path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    artifact_io.write_private_text(args.output if args.output else output, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
     print(output)
     return 0
 

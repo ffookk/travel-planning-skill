@@ -71,6 +71,8 @@
 
 ## Optional private offline export
 
+Local artifact files written by `assemble_itinerary.py`, `audit_itinerary.py --output`, and `render_itinerary.py` (including `--private-offline`) use owner-only `0600` permissions on POSIX systems. Each command stages the complete file beside its destination before replacing it; an unsuccessful write preserves an existing output, and successful replacement also makes an older permissive file private. Output symlinks and directories are refused, and parent-directory permissions are not changed. The artifact contents are unchanged. This is local file protection, not encryption, anonymization, or web publication; deliberate sharing remains a separate action.
+
 The renderer's default output remains unchanged. For a local copy that does not automatically load external images or map previews, use:
 
 ```sh
