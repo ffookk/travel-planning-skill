@@ -69,9 +69,41 @@
 
 已核验高德 POI 的餐厅卡优先提供“在高德查看门店”和“在高德导航到店”。详情使用 `https://uri.amap.com/poidetail`，导航使用 `https://uri.amap.com/navigation`；移动端可尝试调起高德 App，桌面端保留 H5 页面。高德链接用于用户实时查看和自由选择，不代表高德为本行程背书。
 
+## Optional private offline export
+
+Local artifact files written by `assemble_itinerary.py`, `audit_itinerary.py --output`, and `render_itinerary.py` (including `--private-offline`) use owner-only `0600` permissions on POSIX systems. Each command stages the complete file beside its destination before replacing it; an unsuccessful write preserves an existing output, and successful replacement also makes an older permissive file private. Output symlinks and directories are refused, and parent-directory permissions are not changed. The artifact contents are unchanged. This is local file protection, not encryption, anonymization, or web publication; deliberate sharing remains a separate action.
+
+The renderer's default output remains unchanged. For a local copy that does not automatically load external images or map previews, use:
+
+```sh
+python3 scripts/render_itinerary.py itinerary.json itinerary-offline.html --private-offline
+```
+
+Python callers can use `build(data, private_offline=True)`. This profile retains the itinerary text, numbered route stops, source attributions, and intentional HTTPS links, including their original query parameters. Images become text descriptions and source links; maps retain their route links. WeChat copy buttons become readable account and menu instructions. The source JSON is not modified.
+
+The offline HTML omits scripts and embedded media, and adds a restrictive Content Security Policy. Its detail, overview, and route views use the existing native CSS controls; expandable restaurant and source sections still work without JavaScript. Opening an external link deliberately leaves the offline document and may contact the linked service. This profile does not anonymize the itinerary, remove private trip details, or make the file safe to share. It does not download resources for later offline viewing or refresh previously researched information.
+
 ## 汇总与派生
 
 - 预算：从事件 `cost_items[]` 派生交通、住宿、门票、付费项目和餐饮小计；区分已确认、平台价、估算、待复核和可选。汇总可以放在行程末尾，但不能维护第二套金额。
 - 待办：购票、订房、景点预约、餐厅预约及各自截止时间。
 - 每日强度：步行、爬升、换乘次数、最早出发、最晚回酒店。
 - 复核提醒：天气、余票、价格、开放时间和临时公告的再次检查时间。
+
+## Explicit minimal share summary
+
+For a public-facing summary, run `python3 scripts/export_share_summary.py itinerary.json share.html --selection share-selection.json` from this skill's directory. This is a separate optional export; the full private itinerary and its ordinary renderer remain unchanged. It is a selected highlights page, not a complete execution guide or an automatic anonymizer.
+
+Create the selection with the exact labels intended for the audience:
+
+```json
+{
+  "schema_version": "travel-share-selection/v1",
+  "public_title": "Weekend highlights",
+  "attractions": [{"id": "a1", "public_label": "Lakeside walk"}]
+}
+```
+
+Only `public_title` (default: `Travel highlights`) and explicitly supplied `public_label` text enter the HTML. Attraction IDs are checked against actually used attractions but are not exported. The exporter does not copy the itinerary's original title, attraction names, dates, times, traveler details, hotel information, addresses, coordinates, private notes, documents, quote data, source links, query parameters, or unknown extension fields. Selection order is independent of the private schedule. Empty selection yields a generic page.
+
+The summary contains no scripts, links, external images, fonts or embedded maps. Review the chosen public labels: text deliberately placed in the selection is published to the file exactly as supplied (HTML-escaped), and labels can still reveal a destination or identity. This boundary avoids copying private source fields; it cannot establish that human-authored public text is anonymous. The command only writes a local file and never authorizes or performs online publication. Keep the selection and complete source itinerary private.

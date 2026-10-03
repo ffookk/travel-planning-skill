@@ -7,6 +7,12 @@ description: 调研和规划需要可靠动态信息的旅行，比较路线与�
 
 将旅行需求转化为可执行的逐日事件流，并交付可独立打开的响应式 HTML 页面和对应 JSON。
 
+## Sensitive-data intake
+
+Before any preflight, search, provider call, delegation, workspace write, or export, assess whether the input is ordinary travel data or is described as confidential, restricted, classified, or requiring no external disclosure. For the latter or an ambiguous sensitivity claim, pause handling the affected material and read the [sensitive-data boundary](../../docs/security/sensitive-data-boundary.md); ask only abstract classification, recipient, and environment questions, never for the payload. Use public or synthetic information for independent work. This Skill does not provide confidential transmission, and these instructions do not enforce runtime isolation. Ordinary travel planning continues under the existing workflow and authorization rules.
+
+For optional developer-side checks of synthetic planning decisions, see [offline evaluation](references/offline-evaluation.md). This evaluator does not replace trip research or the production itinerary audit.
+
 ## 路线确认门槛
 
 1. 只收集会显著影响方案的信息：出发地、目的地、日期或天数、人数、预算、节奏、兴趣、住宿位置和硬性限制。除日期、目的地或无障碍安全风险外，缺失信息可用明确的低风险假设补齐。
@@ -30,6 +36,7 @@ description: 调研和规划需要可靠动态信息的旅行，比较路线与�
 | 检查境外、行李、特殊人群和分阶段复核 | [行前就绪检查](references/trip-readiness.md) |
 | 创建或修改 `itinerary.json` | [行程数据结构](references/itinerary-schema.md) |
 | 渲染或检查页面 | [交互页面规范](references/interactive-page.md) |
+| Final delivery, including private offline delivery | [Audited final delivery](references/final-delivery.md) |
 
 深度规划开始前运行真实数据源预检，并按路线追加必需来源：
 
@@ -54,6 +61,8 @@ python3 skills/travel-planning/scripts/research_sources.py preflight \
 - 未经用户对具体项目、日期、数量、价格及乘客或入住人确认，不提交订单、付款、发送消息或修改预订。页面中的购买、订房和购票控件只负责跳转。
 - 不虚构预订结果、实时价格、库存、开放状态或来源；所有估算明确标记。
 
+For a known constraint that needs a specialized planning decision, use the [conditional planning guides](references/scenario-guides.md) to discover matching installed references. Read only the relevant guides; their synthetic examples do not supply live travel facts or change the existing itinerary schema.
+
 ## 研究与编排
 
 对拟采用的景点研究适用日期的开放与预约、入口和出口、游览时段、内部 checkpoints、费用、补给和最晚离开时间。交通按出口到下一入口计算门到门时间，包含步行、等候、换乘、安检、取行李和缓冲；跨住宿夜明确行李去向。先按硬时间和地理方向排程，再比较价格。
@@ -77,11 +86,21 @@ python3 skills/travel-planning/scripts/research_sources.py preflight \
 
 确定性审查至少运行两次：候选事件流完成后检查硬时间与交通，动态候选绑定完成后执行最终审查；随后由独立审查 Agent 检查事实冲突和语义可执行性。阻断项清零后才能渲染最终页面：
 
+The following existing commands support diagnostics and previews. The raw renderer does not enforce the audit result; its output is not an audited final delivery. The finalizer below must be the last writer of the delivered HTML, and its matching receipt must accompany that file.
+
 ```bash
 python3 skills/travel-planning/scripts/assemble_itinerary.py --workspace ".travel-research/<trip-id>"
 python3 skills/travel-planning/scripts/audit_itinerary.py ".travel-research/<trip-id>/artifacts/itinerary.json" --output ".travel-research/<trip-id>/artifacts/audit.json"
 python3 skills/travel-planning/scripts/render_itinerary.py ".travel-research/<trip-id>/artifacts/itinerary.json" ".travel-research/<trip-id>/artifacts/itinerary.html"
 ```
+
+For final delivery, use the [audited final-delivery entry point](references/final-delivery.md). The existing audit and renderer commands remain available for diagnostics and previews. Set `workflow.phase="final"` explicitly after resolving the required evidence; the finalizer does not promote drafts. Assembled itineraries require their matching workspace, and any used research conflicts require bound decisions:
+
+```bash
+python3 skills/travel-planning/scripts/finalize_itinerary.py ".travel-research/<trip-id>/artifacts/itinerary.json" ".travel-research/<trip-id>/artifacts/itinerary.html" --workspace ".travel-research/<trip-id>"
+```
+
+When the user requests no automatic external resource loads, add `--private-offline` to this finalizer command with an offline-capable renderer installed. Do not substitute a raw offline preview for audited final delivery. Keep the complete itinerary JSON, HTML, and receipt private unless the user intentionally chooses recipients; offline output retains private trip details. A public-facing highlights summary requires a separate explicit selection and review of the text to be shared.
 
 ## 页面与交付
 

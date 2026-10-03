@@ -7,6 +7,10 @@ description: 使用插件已配置的高德地图 MCP 查询中国境内地址�
 
 通过插件清单中的 `amap-maps` MCP Server 调用高德 Web Service。直接使用宿主暴露的 MCP 工具，不安装 `mcporter`，也不重复调用社区 Skill 自带的 HTTP 脚本。
 
+## Sensitive-data intake
+
+Before any preflight, search, provider call, delegation, workspace write, or export, assess whether the input is ordinary travel data or is described as confidential, restricted, classified, or requiring no external disclosure. For the latter or an ambiguous sensitivity claim, pause handling the affected material and read the [sensitive-data boundary](../../docs/security/sensitive-data-boundary.md); ask only abstract classification, recipient, and environment questions, never for the payload. Use public or synthetic information for independent work. This Skill does not provide confidential transmission, and these instructions do not enforce runtime isolation. Ordinary travel planning continues under the existing workflow and authorization rules.
+
 ## 工具路由
 
 - 地址转坐标使用 `maps_geo`；坐标转地址使用 `maps_regeocode`。

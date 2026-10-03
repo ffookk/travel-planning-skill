@@ -18,6 +18,14 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
+PLUGIN_ROOT = Path(__file__).resolve().parents[3]
+if str(PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_ROOT))
+
+from scripts.runtime_env import SourceEnvironmentError, process_environment  # noqa: E402
+from scripts.runtime_diagnostics import failure_message, http_failure  # noqa: E402
+
+
 UPSTREAM_REPOSITORY = "https://github.com/xpzouying/xiaohongshu-mcp"
 UPSTREAM_VERSION = "v2.5.0"
 UPSTREAM_COMMIT = "6583124dfda92312b6bc19a042a6acfae63fe498"
@@ -94,9 +102,12 @@ def _download(name: str, digest: str, destination: Path) -> None:
         with urlopen(request, timeout=300) as response, temporary.open("wb") as stream:
             while chunk := response.read(1024 * 1024):
                 stream.write(chunk)
-    except (HTTPError, URLError, OSError) as error:
+    except HTTPError as error:
         temporary.unlink(missing_ok=True)
-        raise SetupError(f"下载 {name} 失败：{error}") from error
+        raise SetupError(http_failure(error.code)[1]) from None
+    except (URLError, OSError):
+        temporary.unlink(missing_ok=True)
+        raise SetupError("Runtime download failed; check connectivity and local write permissions") from None
     actual = _sha256(temporary)
     if actual != digest:
         temporary.unlink(missing_ok=True)
@@ -204,18 +215,22 @@ def start(args: argparse.Namespace) -> dict[str, Any]:
     if _health():
         return status(args)
     _secure_state_files()
-    environment = os.environ.copy()
+    environment = process_environment()
     environment["COOKIES_PATH"] = str(COOKIE_FILE)
-    with LOG_FILE.open("ab") as log:
-        process = subprocess.Popen(
-            [str(_binary("server")), "-headless=true", "-port=127.0.0.1:18060"],
-            cwd=STATE_DIR,
-            env=environment,
-            stdin=subprocess.DEVNULL,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
+    try:
+        with LOG_FILE.open("ab") as log:
+            process = subprocess.Popen(
+                [str(_binary("server")), "-headless=true", "-port=127.0.0.1:18060"],
+                cwd=STATE_DIR,
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+    except OSError:
+        raise SetupError(failure_message("runtime_unavailable")) from None
+    _secure_state_files()
     PID_FILE.write_text(f"{process.pid}\n", encoding="utf-8")
     deadline = time.monotonic() + args.timeout
     while time.monotonic() < deadline:
@@ -223,12 +238,7 @@ def start(args: argparse.Namespace) -> dict[str, Any]:
             _secure_state_files()
             return status(args)
         if process.poll() is not None:
-            tail = ""
-            try:
-                tail = "\n".join(LOG_FILE.read_text(encoding="utf-8", errors="replace").splitlines()[-20:])
-            except OSError:
-                pass
-            raise SetupError(f"xiaohongshu-mcp 启动失败（exit {process.returncode}）：{tail}")
+            raise SetupError(f"xiaohongshu-mcp failed to start (exit {process.returncode}); raw local logs were withheld")
         time.sleep(0.5)
     raise SetupError(f"xiaohongshu-mcp 在 {args.timeout} 秒内未就绪；查看 {LOG_FILE}")
 
@@ -255,9 +265,18 @@ def login(_: argparse.Namespace) -> dict[str, Any]:
     if _health():
         raise SetupError("请先运行 setup.py stop，避免登录工具与 MCP 服务同时使用同一 Cookie 文件")
     _secure_state_files()
-    environment = os.environ.copy()
+    environment = process_environment()
     environment["COOKIES_PATH"] = str(COOKIE_FILE)
-    completed = subprocess.run([str(_binary("login"))], cwd=STATE_DIR, env=environment, check=False)
+    try:
+        with LOG_FILE.open("ab") as log:
+            completed = subprocess.run(
+                [str(_binary("login"))], cwd=STATE_DIR, env=environment,
+                stdout=log, stderr=subprocess.STDOUT, check=False,
+            )
+    except OSError:
+        raise SetupError(failure_message("runtime_unavailable")) from None
+    finally:
+        _secure_state_files()
     if completed.returncode != 0:
         raise SetupError(f"登录工具退出码为 {completed.returncode}")
     _secure_state_files()
@@ -267,8 +286,10 @@ def login(_: argparse.Namespace) -> dict[str, Any]:
 def logs(args: argparse.Namespace) -> dict[str, Any]:
     if not LOG_FILE.is_file():
         return {"status": "empty", "log_file": str(LOG_FILE), "lines": []}
-    lines = LOG_FILE.read_text(encoding="utf-8", errors="replace").splitlines()[-args.lines :]
-    return {"status": "ok", "log_file": str(LOG_FILE), "lines": lines}
+    return {
+        "status": "withheld", "log_file": str(LOG_FILE), "lines": [],
+        "message": "Raw runtime logs may contain account data or tokens; inspect the local file privately if needed",
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -281,8 +302,8 @@ def build_parser() -> argparse.ArgumentParser:
     start_parser.set_defaults(handler=start)
     subparsers.add_parser("stop", help="停止由本脚本启动的 MCP 服务").set_defaults(handler=stop)
     subparsers.add_parser("login", help="打开上游独立浏览器登录工具，由用户扫码").set_defaults(handler=login)
-    logs_parser = subparsers.add_parser("logs", help="查看服务日志末尾")
-    logs_parser.add_argument("--lines", type=int, default=40, choices=range(1, 501), metavar="1-500")
+    logs_parser = subparsers.add_parser("logs", help="Report local log availability without exposing raw content")
+    logs_parser.add_argument("--lines", type=int, default=40, choices=range(1, 501), metavar="1-500", help="Accepted for compatibility; raw lines remain private")
     logs_parser.set_defaults(handler=logs)
     return parser
 
@@ -292,7 +313,7 @@ def main() -> int:
     try:
         output(args.handler(args))
         return 0
-    except SetupError as error:
+    except (SetupError, SourceEnvironmentError) as error:
         output({"status": "error", "message": str(error)})
         return 2
 

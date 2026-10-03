@@ -1,0 +1,153 @@
+{
+  "schema": "planning-case/v1",
+  "id": "luggage-retrieval-insufficient-window",
+  "prompt": "All times share one synthetic date and local minute axis. Select desk-a or desk-b only if retrieval can finish by closing. Calculation is arrival plus required retrieval duration, in minutes. An open desk at arrival alone is insufficient. Pending lists unknown opening or closing facts from this case; defer if none qualifies.",
+  "facts": {
+    "arrival": {
+      "description": "Synthetic: arrival at desk, 16:50",
+      "value": 1010,
+      "unit": "minutes",
+      "status": "verified"
+    },
+    "retrieval": {
+      "description": "Synthetic: required retrieval duration",
+      "value": 15,
+      "unit": "minutes",
+      "status": "verified"
+    },
+    "desk-a-close": {
+      "description": "Synthetic: desk A closes",
+      "value": 1020,
+      "unit": "minutes",
+      "status": "verified"
+    },
+    "desk-b-close": {
+      "description": "Synthetic: desk B closes",
+      "value": 1050,
+      "unit": "minutes",
+      "status": "verified"
+    }
+  },
+  "rules": [
+    {
+      "id": "selection",
+      "kind": "choice",
+      "options": [
+        {
+          "id": "desk-a",
+          "requires": [
+            {
+              "left": {
+                "op": "sum",
+                "args": [
+                  {
+                    "fact": "arrival"
+                  },
+                  {
+                    "fact": "retrieval"
+                  }
+                ]
+              },
+              "op": "le",
+              "right": {
+                "fact": "desk-a-close"
+              }
+            }
+          ]
+        },
+        {
+          "id": "desk-b",
+          "requires": [
+            {
+              "left": {
+                "op": "sum",
+                "args": [
+                  {
+                    "fact": "arrival"
+                  },
+                  {
+                    "fact": "retrieval"
+                  }
+                ]
+              },
+              "op": "le",
+              "right": {
+                "fact": "desk-b-close"
+              }
+            }
+          ]
+        }
+      ],
+      "minimum": 1,
+      "maximum": 1,
+      "policy": "feasible"
+    },
+    {
+      "id": "calculation",
+      "kind": "quantity",
+      "expression": {
+        "op": "sum",
+        "args": [
+          {
+            "fact": "arrival"
+          },
+          {
+            "fact": "retrieval"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pending",
+      "kind": "pending",
+      "facts": [
+        "desk-a-close",
+        "desk-b-close"
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "id": "supported-1",
+      "answers": {
+        "selection": [
+          "desk-b"
+        ],
+        "calculation": {
+          "value": 1025,
+          "unit": "minutes"
+        },
+        "pending": []
+      },
+      "expect": "pass"
+    },
+    {
+      "id": "unsupported-1",
+      "answers": {
+        "selection": [
+          "desk-a"
+        ],
+        "calculation": {
+          "value": 1025,
+          "unit": "minutes"
+        },
+        "pending": []
+      },
+      "expect": "fail"
+    },
+    {
+      "id": "unsupported-2",
+      "answers": {
+        "selection": [
+          "desk-b"
+        ],
+        "calculation": {
+          "value": 1010,
+          "unit": "minutes"
+        },
+        "pending": []
+      },
+      "expect": "fail"
+    }
+  ]
+}

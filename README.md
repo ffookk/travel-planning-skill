@@ -2,6 +2,8 @@
 
 面向 Codex 的旅行研究与行程交付插件。它会先比较路线并让用户确认，再按需查询地图、交通、住宿、天气和社区体验，最后生成带来源的 `itinerary.json` 与可独立打开的响应式 `itinerary.html`。
 
+> **Sensitive-data boundary:** This plugin supports ordinary travel research. It is not a confidential-message transport or an approved system for classified information. Provider queries, local artifacts, and external resources in exported HTML have separate disclosure and retention boundaries. Read the [sensitive-data guidance](plugins/travel-planning/docs/security/sensitive-data-boundary.md) before using restricted information. These instructions do not implement encryption, network isolation, or a confidential runtime mode.
+
 ## 在线 Demo
 
 [查看兰州一日游示例](https://starlit-tartufo-3b4ce4.netlify.app/)，可直接体验最终行程页面的路线图、逐日时间轴、关键信息一览和移动端布局。
@@ -172,6 +174,8 @@ python3 plugins/travel-planning/skills/travel-planning/scripts/research_sources.
 
 每次行程的数据都保存在当前项目的 `.travel-research/<trip-id>/`，不会建立跨行程缓存。最终交付位于：
 
+This per-trip scope covers the research workspace. Provider runtime state, including Xiaohongshu query metadata and note-token caching, can remain in a user-global directory; see the [sensitive-data boundary](plugins/travel-planning/docs/security/sensitive-data-boundary.md) for retention and disclosure limits.
+
 ```text
 .travel-research/<trip-id>/artifacts/itinerary.json
 .travel-research/<trip-id>/artifacts/audit.json
@@ -231,7 +235,9 @@ travel-planning-marketplace/
 
 接收方需要先把 ZIP 解压到持久目录，再按照“快速接入 Codex”中的命令注册该目录并安装 `travel-planning@local`。Codex CLI 接收的是 marketplace 目录，不是 ZIP 文件本身。
 
-打包清单由 Git 规则生成。已跟踪文件和未被忽略的新文件会进入 ZIP；`.gitignore`、`.git/info/exclude` 和全局 Git ignore 命中的文件不会进入产物。因此 `sources.local.env`、研究工作区、浏览器截图和本机缓存不会被分发。
+打包清单由 Git 规则生成。
+
+Tracked files and untracked files allowed by Git ignore rules are candidates for the ZIP. Git ignore rules do not exclude files that are already tracked. Before creating or replacing the archive, packaging independently rejects known private runtime paths, including local credential files, research workspaces, browser state, cookies, token caches, and service logs, even if they were force-added to Git. Unsafe or non-portable symlinks are rejected too; relative links to public resources included in the package remain supported. The `sources.example.env` template remains eligible. This path policy is not a content-complete secret scanner: review the selected files before distribution, including public files that may contain private data.
 
 如需覆盖默认路径：
 

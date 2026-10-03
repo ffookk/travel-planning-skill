@@ -96,6 +96,8 @@ python3 skills/travel-planning/scripts/research_workspace.py submit \
 
 `--sources-file` 接受临时 JSON 对象或数组，提交后写成 `sources/<task_id>.jsonl`。每条来源至少包含带任务前缀的 `id`、标题、HTTPS URL、来源类型和查询时间；脚本同时生成不可覆盖的 `evidence/<task_id>/<source_id>.json`。
 
+Source provenance timestamps are distinct: `checked_at` records an actual source verification supplied by the researcher. If that time is unknown, omit it or use `null`; registration stores `checked_at: null` and must not imply a new verification. `recorded_at` records when a source is registered and is preserved during subsequent normalization. Evidence records also retain `archived_at` for compatibility. Neither archival timestamp is evidence that the source was checked. Existing explicit verification times and source metadata are preserved.
+
 ## 中途归档
 
 发现后续可能引用的来源时立即归档，不依赖聊天上下文：
@@ -114,6 +116,10 @@ python3 skills/travel-planning/scripts/research_workspace.py archive \
 ```
 
 允许归档 PDF、HTML、Markdown、文本、JSON、CSV、DOCX、XLSX 和常见图片，单文件上限 25 MiB。文件入库后记录原名、大小和 SHA-256；是否删除原临时文件由调用方决定。
+
+For `archive`, pass `--checked-at` only when the actual verification time is known. Omitting it leaves `checked_at` unknown while `recorded_at` and `archived_at` record the archival operation. This applies to links, notes, and documents; preserving a document does not verify its contents.
+
+Document ingestion streams into a private temporary file and computes the size and SHA256 from exactly those stored bytes, enforcing the 25 MiB limit during reading. Ordinary copy or metadata-write failures before metadata publication remove this attempt's staged or newly copied document so the same record ID can be retried; pre-existing records and source files are preserved. If an interruption arrives after metadata replacement, retain the referenced document instead of rolling it back. When commit state or cleanup cannot be established, the command reports that local inspection is required. The document and metadata still use two filesystem replacements: a crash between them can leave an incomplete pair, so this is not a filesystem transaction or a guarantee that a changing source was read as one historical version.
 
 - `freshness=dynamic`：价格、库存、时刻、天气和临时公告，下次必须重查。
 - `freshness=seasonal`：季节玩法和装备，只作相同季节候选。
@@ -134,6 +140,8 @@ python3 skills/travel-planning/scripts/research_workspace.py merge \
 
 ## 声明式装配
 
+Collection bindings are validated before any collection input is read. Each binding declares exactly one nonempty string `task` or `file` and a string `path`. When present, `id_key` is a nonempty string and `ids` is an array of unique nonempty strings; a scalar string is not a selection list. Omit `ids` to retain all source records, use `ids: []` to select none, or supply an array to select records in that exact order. `patches` maps entity IDs to object overlays, and `append` is an array of objects. Empty patch objects and append arrays remain valid, and appended objects follow the selection. This is binding validation, not enforcement of the entire plan schema; existing extension collection names and object fields remain supported.
+
 `merge` 后，主 Agent 将选用实体、景点执行配置、餐窗、逐日事件、预约任务和降级策略写入 `state/itinerary-plan.json`。计划使用 `itinerary-plan/v1`，并通过 `research_state_sha256` 绑定当前 `state/research.json`；Agent 只写 JSON 决策，不为目的地创建 Python。
 
 ```bash
@@ -147,4 +155,12 @@ python3 skills/travel-planning/scripts/assemble_itinerary.py \
 
 通用装配器从 `collections` 声明加载 `results/` 或 `state/` 中的对象，按稳定 ID 选择和绑定，生成 `artifacts/itinerary.json`。研究状态变化、选定路线不一致、实体缺失、快照冲突或事件 ID 重复都会停止装配。完整字段合同见 `schemas/itinerary-plan.schema.json`。
 
+Assembly input paths must resolve inside the selected workspace, including collection files, task results, source snapshots, source JSONL files, and the default plan and research state. Relative paths, internal absolute paths, and symlinks whose resolved targets stay inside the workspace remain supported. Task IDs follow the workspace contract: 1–64 lowercase letters, digits, underscores or hyphens, starting with a letter or digit. An explicitly supplied `--plan` may be outside the workspace; `--output` remains caller-selected. These explicit options do not permit the plan's referenced inputs to escape the workspace. Keep the workspace stable during assembly; this check does not isolate concurrent filesystem writers.
+
 主 Agent 只载入合并后的必要摘要，需要证据时按 `task_id`、`source_id` 或 `record_id` 定向读取。二进制文档先看元数据和摘要，再决定是否打开。
+
+## Lodging price presentation
+
+For lodging price presentation, assembly preserves nonblank `price` text, `price.display`, or `quote.display` in that order. Otherwise, `quote.amount_per_room_per_night_cny` remains a unit price unless explicit positive integer counts are available: rooms from `room_requirement.rooms` or `requested_occupancy.rooms`, and nights from `nights` or a complete `check_in_date`/`check_out_date` pair of `YYYY-MM-DD` dates. Supplied counts must agree with each other and with any complete date span. Assembly does not infer occupancy from traveler counts or update the original quote, dates, or quantities.
+
+Calculated room × night amounts are labeled as planning estimates, not provider totals; taxes, fees, and varying nightly rates still require source verification. CNY quote amounts must be finite and nonnegative (numeric strings are accepted), and zero remains a valid amount. Nonzero amounts exceeding 1,000 integer or fractional digits are rejected before arithmetic or display expansion. The legacy `two_rooms_two_nights_estimate_cny` field retains its explicit two-room, two-night scope, even without a unit rate; it is displayed only when supplied quantities do not contradict that scope. Missing quantities never become two rooms or two nights by default.

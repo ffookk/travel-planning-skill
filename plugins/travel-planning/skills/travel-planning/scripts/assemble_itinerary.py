@@ -5,10 +5,20 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
+import re
 from copy import deepcopy
+from datetime import date
+from decimal import Decimal, InvalidOperation, localcontext
 from pathlib import Path
 from typing import Any
+
+
+COST_SPEC = importlib.util.spec_from_file_location("travel_cost_contract", Path(__file__).with_name("cost_contract.py"))
+assert COST_SPEC and COST_SPEC.loader
+cost_contract = importlib.util.module_from_spec(COST_SPEC)
+COST_SPEC.loader.exec_module(cost_contract)
 
 
 ALLOWED_ACTION_TYPES = {
@@ -28,8 +38,37 @@ OUTPUT_COLLECTIONS = (
 )
 
 
+ARTIFACT_SPEC = importlib.util.spec_from_file_location("travel_artifact_io", Path(__file__).with_name("artifact_io.py"))
+assert ARTIFACT_SPEC and ARTIFACT_SPEC.loader
+artifact_io = importlib.util.module_from_spec(ARTIFACT_SPEC)
+ARTIFACT_SPEC.loader.exec_module(artifact_io)
+
+
 class AssemblyError(ValueError):
     """Raised when a plan cannot be assembled safely."""
+
+
+def workspace_input(workspace: Path, path: str | Path, label: str) -> Path:
+    """Resolve a workspace-owned input before reading it, including symlinks."""
+    try:
+        root = workspace.resolve()
+        candidate = root / path
+        try:
+            resolved = candidate.resolve(strict=True)
+        except FileNotFoundError:
+            # Keep missing-input handling while rejecting unresolved symlink loops.
+            resolved = candidate.resolve()
+        resolved.relative_to(root)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        raise AssemblyError(f"{label} must resolve inside the workspace") from None
+    return resolved
+
+
+def validate_task_id(value: Any) -> str:
+    """Use the same task identifier contract as the research workspace writer."""
+    if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", value):
+        raise AssemblyError("Task IDs must use 1-64 lowercase letters, digits, underscores or hyphens and start with a letter or digit")
+    return value
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -108,7 +147,7 @@ def money(value: Any) -> str:
 
 def normalize_cost(item: dict[str, Any]) -> dict[str, Any]:
     role = str(item.get("pricing_role") or "optional")
-    return {
+    result = {
         "name": item.get("name"),
         "kind": item.get("kind") or ("base_ticket" if role == "baseline" else "optional_experience"),
         "unit_price": money(item.get("unit_price_cny")),
@@ -119,13 +158,40 @@ def normalize_cost(item: dict[str, Any]) -> dict[str, Any]:
         "status": item.get("status") or "to_recheck",
         "source_ids": item.get("source_ids") or [],
     }
+    price = item.get("price", item.get("unit_price"))
+    if cost_contract.structured(price):
+        try:
+            result["unit_price"] = cost_contract.quote_display(price)
+            quantity = item.get("quantity")
+            if quantity is not None:
+                cost_contract.positive_count(quantity)
+            result["quantity"] = quantity if quantity is not None else "待核"
+            supplied = item.get("subtotal")
+            if isinstance(supplied, str) and supplied.strip():
+                result["subtotal"] = supplied
+            else:
+                result["subtotal"] = cost_contract.estimated_subtotal(price, quantity) if quantity is not None else "数量待核"
+        except ValueError as error:
+            raise AssemblyError(str(error)) from None
+        result["price_evidence"] = deepcopy(price)
+    if "alternative_group" in item:
+        result["alternative_group"] = item["alternative_group"]
+    return result
 
 
 def normalize_route(item: dict[str, Any], defaults: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(item)
     cost = result.get("cost")
     if isinstance(cost, dict):
-        if cost.get("amount_yuan_for_4") is not None:
+        if "cost_quote" in result and result["cost_quote"] != cost:
+            raise AssemblyError("Transport cost_quote conflicts with the supplied cost")
+        result["cost_quote"] = deepcopy(cost)
+        if cost_contract.structured(cost):
+            try:
+                result["cost"] = cost_contract.quote_display(cost)
+            except ValueError as error:
+                raise AssemblyError(str(error)) from None
+        elif cost.get("amount_yuan_for_4") is not None:
             result["cost"] = f"4人约 {cost['amount_yuan_for_4']} 元（{cost.get('status', '估算')}）"
         elif cost.get("amount_yuan_per_person") is not None:
             result["cost"] = f"约 {cost['amount_yuan_per_person']} 元/人（{cost.get('status', '估算')}）"
@@ -153,7 +219,15 @@ def normalize_intercity(item: dict[str, Any], defaults: dict[str, Any]) -> dict[
     )
     cost = result.get("cost")
     if isinstance(cost, dict):
-        if cost.get("amount_yuan_for_4") is not None:
+        if "cost_quote" in result and result["cost_quote"] != cost:
+            raise AssemblyError("Transport cost_quote conflicts with the supplied cost")
+        result["cost_quote"] = deepcopy(cost)
+        if cost_contract.structured(cost):
+            try:
+                result["cost"] = cost_contract.quote_display(cost)
+            except ValueError as error:
+                raise AssemblyError(str(error)) from None
+        elif cost.get("amount_yuan_for_4") is not None:
             result["cost"] = f"4人{cost['amount_yuan_for_4']}（{cost.get('status', '待复核')}）"
         elif cost.get("amount_yuan_per_adult") is not None:
             result["cost"] = f"约¥{cost['amount_yuan_per_adult']}/人（{cost.get('status', '待复核')}）"
@@ -173,21 +247,104 @@ def normalize_intercity(item: dict[str, Any], defaults: dict[str, Any]) -> dict[
     return result
 
 
+def lodging_amount(value: Any, path: str) -> Decimal | None:
+    """Read a CNY amount without treating a zero quote as missing."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise AssemblyError(f"{path} must be a finite nonnegative amount")
+    try:
+        amount = Decimal(str(value))
+    except InvalidOperation:
+        raise AssemblyError(f"{path} must be a finite nonnegative amount") from None
+    if not amount.is_finite() or amount < 0:
+        raise AssemblyError(f"{path} must be a finite nonnegative amount")
+    if amount == 0:
+        return Decimal(0)
+    if amount.adjusted() >= 1000 or amount.as_tuple().exponent < -1000:
+        raise AssemblyError(f"{path} must fit within 1000 integer and fractional digits")
+    return amount
+
+
+def lodging_count(value: Any, path: str) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise AssemblyError(f"{path} must be a positive integer")
+    return value
+
+
+def lodging_price(item: dict[str, Any]) -> str:
+    """Build presentation from explicit evidence without changing the quote."""
+    quote = item.get("quote")
+    if quote is None:
+        quote = {}
+    if not isinstance(quote, dict):
+        raise AssemblyError("lodging.quote must be an object")
+    rate = lodging_amount(quote.get("amount_per_room_per_night_cny"), "lodging.quote.amount_per_room_per_night_cny")
+    legacy_total = lodging_amount(quote.get("two_rooms_two_nights_estimate_cny"), "lodging.quote.two_rooms_two_nights_estimate_cny")
+    rooms = None
+    for field in ("room_requirement", "requested_occupancy"):
+        requirement = item.get(field)
+        if requirement is None:
+            continue
+        if not isinstance(requirement, dict):
+            raise AssemblyError(f"lodging.{field} must be an object")
+        count = lodging_count(requirement.get("rooms"), f"lodging.{field}.rooms")
+        if count is not None:
+            if rooms is not None and rooms != count:
+                raise AssemblyError("Lodging room counts must agree")
+            rooms = count
+    nights = lodging_count(item.get("nights"), "lodging.nights")
+    if item.get("check_in_date") is not None and item.get("check_out_date") is not None:
+        try:
+            check_in = date.fromisoformat(item["check_in_date"])
+            check_out = date.fromisoformat(item["check_out_date"])
+            if check_in.isoformat() != item["check_in_date"] or check_out.isoformat() != item["check_out_date"]:
+                raise ValueError
+        except (TypeError, ValueError):
+            raise AssemblyError("Lodging check_in_date and check_out_date must be YYYY-MM-DD dates") from None
+        date_nights = (check_out - check_in).days
+        if date_nights <= 0 or (nights is not None and nights != date_nights):
+            raise AssemblyError("Lodging nights must agree with a positive check-in/check-out date span")
+        nights = date_nights
+
+    supplied_price = item.get("price")
+    if isinstance(supplied_price, dict):
+        supplied_price = supplied_price.get("display")
+    if isinstance(supplied_price, (int, float)):
+        lodging_amount(supplied_price, "lodging.price")
+        return str(supplied_price)
+    for display in (supplied_price, quote.get("display")):
+        if isinstance(display, str) and display.strip():
+            return display
+
+    def amount_text(amount: Decimal) -> str:
+        text = format(amount, "f")
+        return text.rstrip("0").rstrip(".") if "." in text else text
+
+    parts = [f"快照约¥{amount_text(rate)}/间夜"] if rate is not None else []
+    if legacy_total is not None and rooms in (None, 2) and nights in (None, 2):
+        parts.append(f"2间2晚约¥{amount_text(legacy_total)}")
+    elif rate is not None and rooms is not None and nights is not None:
+        with localcontext() as context:
+            context.prec = max(28, len(rate.as_tuple().digits) + len(str(rooms)) + len(str(nights)))
+            total = rate * rooms * nights
+        parts.append(f"{rooms}间{nights}晚规划估算约¥{amount_text(total)}（按每间夜单价计算，非供应商总价）")
+    return "；".join(parts) or "待重新查询"
+
+
 def normalize_lodging(item: dict[str, Any], defaults: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(item)
-    quote = result.get("quote") or {}
     result["area"] = item.get("area_anchor") or item.get("district")
-    result["price"] = (
-        f"快照约¥{quote.get('amount_per_room_per_night_cny')}/间夜；"
-        f"2间2晚约¥{quote.get('two_rooms_two_nights_estimate_cny')}"
-        if quote.get("amount_per_room_per_night_cny") is not None else "待重新查询"
-    )
+    result["price"] = lodging_price(item)
     result["luggage_storage"] = (item.get("luggage_storage") or {}).get("policy") or "入住前确认"
-    location = item.get("location") or {}
-    result["location_verification"] = {
-        "status": "verified", "checked_at": location.get("poi_verified_at") or defaults["checked_at"],
-        "method": defaults["location_verification_method"], "source_ids": item.get("source_ids") or [],
-    }
+    # Assembly cannot establish hotel identity or turn a POI timestamp into verification.
+    verification = result.get("location_verification")
+    if not isinstance(verification, dict):
+        result["location_verification"] = {"status": "to_recheck"}
+    elif not verification.get("status"):
+        verification["status"] = "to_recheck"
     result["action_links"] = normalize_actions(
         item.get("action_links") or [], "hotel", defaults["hotel_provider"],
         defaults["hotel_disclaimer"], defaults["checked_at"],
@@ -262,6 +419,9 @@ def build_attraction_event(
         }
         if point.get("narration"):
             checkpoint["narration"] = point["narration"]
+        for field in ("meal_id", "images", "action_links", "fallback"):
+            if field in point:
+                checkpoint[field] = deepcopy(point[field])
         checkpoints.append(checkpoint)
     reservation = attraction.get("reservation") or {}
     official = attraction.get("official") or {}
@@ -367,19 +527,58 @@ def default_settings(plan: dict[str, Any]) -> dict[str, Any]:
     return deep_merge(values, plan.get("defaults") or {})
 
 
+def validate_collection_bindings(bindings: Any) -> None:
+    """Validate selection instructions before reading any collection inputs."""
+    if not isinstance(bindings, dict):
+        raise AssemblyError("Collections must be an object")
+    for binding in bindings.values():
+        if not isinstance(binding, dict):
+            raise AssemblyError("Each collection binding must be an object")
+        sources = [key for key in ("task", "file") if key in binding]
+        if len(sources) != 1:
+            raise AssemblyError("Each collection binding must declare exactly one of task or file")
+        source = binding[sources[0]]
+        if not isinstance(source, str) or not source:
+            if sources[0] == "task":
+                raise AssemblyError("Task IDs must use nonempty strings")
+            raise AssemblyError("Collection file must be a nonempty string")
+        if "path" not in binding or not isinstance(binding["path"], str):
+            raise AssemblyError("Each collection binding requires a string path")
+        if "id_key" in binding and (not isinstance(binding["id_key"], str) or not binding["id_key"]):
+            raise AssemblyError("Collection id_key must be a nonempty string")
+        if "ids" in binding:
+            identifiers = binding["ids"]
+            if not isinstance(identifiers, list) or any(not isinstance(value, str) or not value for value in identifiers):
+                raise AssemblyError("Collection ids must be an array of nonempty strings")
+            if len(set(identifiers)) != len(identifiers):
+                raise AssemblyError("Collection ids must not contain duplicates")
+        if "patches" in binding:
+            patches = binding["patches"]
+            if not isinstance(patches, dict) or any(not isinstance(value, dict) for value in patches.values()):
+                raise AssemblyError("Collection patches must map entity IDs to objects")
+        if "append" in binding:
+            appended = binding["append"]
+            if not isinstance(appended, list) or any(not isinstance(value, dict) for value in appended):
+                raise AssemblyError("Collection append must be an array of objects")
+
+
 def load_collections(
     workspace: Path, plan: dict[str, Any]
 ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, dict[str, Any]]]:
     collections: dict[str, list[dict[str, Any]]] = {}
     task_results: dict[str, dict[str, Any]] = {}
-    for name, binding in (plan.get("collections") or {}).items():
+    bindings = plan.get("collections", {})
+    validate_collection_bindings(bindings)
+    for name, binding in bindings.items():
         if not isinstance(binding, dict):
             raise AssemblyError(f"collections.{name} 必须是对象")
         if binding.get("task"):
-            task_id = str(binding["task"])
-            payload = task_results.setdefault(task_id, read_json(workspace / "results" / f"{task_id}.json"))
+            task_id = validate_task_id(binding["task"])
+            path = workspace_input(workspace, Path("results") / f"{task_id}.json", "Task result")
+            payload = task_results.setdefault(task_id, read_json(path))
         elif binding.get("file"):
-            payload = read_json(workspace / str(binding["file"]))
+            path = workspace_input(workspace, binding["file"], "Collection file")
+            payload = read_json(path)
         else:
             raise AssemblyError(f"collections.{name} 必须声明 task 或 file")
         raw = get_path(payload, str(binding.get("path") or ""))
@@ -405,8 +604,12 @@ def load_collections(
 def load_source_snapshots(workspace: Path, task_results: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     snapshots: dict[str, dict[str, Any]] = {}
     for task_id, result in task_results.items():
+        task_id = validate_task_id(task_id)
         for snapshot_id in result.get("source_snapshot_ids") or []:
-            snapshot = read_json(workspace / "snapshots" / task_id / f"{snapshot_id}.json")
+            path = workspace_input(
+                workspace, Path("snapshots") / task_id / f"{snapshot_id}.json", "Source snapshot"
+            )
+            snapshot = read_json(path)
             if snapshot_id in snapshots and snapshots[snapshot_id] != snapshot:
                 raise AssemblyError(f"动态快照 ID 冲突：{snapshot_id}")
             snapshots[str(snapshot_id)] = snapshot
@@ -415,7 +618,9 @@ def load_source_snapshots(workspace: Path, task_results: dict[str, dict[str, Any
 
 def collect_sources(workspace: Path, allowed_ids: list[str] | None = None) -> list[dict[str, Any]]:
     merged: dict[str, dict[str, Any]] = {}
-    for path in sorted((workspace / "sources").glob("*.jsonl")):
+    source_directory = workspace_input(workspace, "sources", "Source directory")
+    for source_path in sorted(source_directory.glob("*.jsonl")):
+        path = workspace_input(workspace, source_path, "Source file")
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             if not line.strip():
                 continue
@@ -534,10 +739,10 @@ def validate_plan(workspace: Path, plan: dict[str, Any]) -> None:
     for field in ("trip", "workflow", "collections", "days"):
         if field not in plan:
             raise AssemblyError(f"plan 缺少 {field}")
-    selected_route = read_json(workspace / "selected-route.json")
+    selected_route = read_json(workspace_input(workspace, "selected-route.json", "Selected route"))
     if plan["workflow"].get("selected_route_id") != selected_route.get("id"):
         raise AssemblyError("plan.selected_route_id 与 workspace 已确认路线不一致")
-    research_path = workspace / "state" / "research.json"
+    research_path = workspace_input(workspace, "state/research.json", "Research state")
     actual_digest = sha256_file(research_path)
     if plan.get("research_state_sha256") != actual_digest:
         raise AssemblyError(
@@ -594,6 +799,10 @@ def assemble(workspace: Path, plan_path: Path) -> dict[str, Any]:
     planning = deep_merge(planning, plan.get("planning") or {})
     return {
         "trip": deepcopy(plan["trip"]), "workflow": deepcopy(plan["workflow"]),
+        "research_context": {
+            "schema_version": "itinerary-research-context/v1",
+            "research_state_sha256": plan["research_state_sha256"],
+        },
         "route_proposals": deepcopy(plan.get("route_proposals") or []),
         "planning": planning, "days": days,
         "sources": collect_sources(workspace, plan.get("source_ids")),
@@ -617,13 +826,12 @@ def main() -> int:
     args = build_parser().parse_args()
     workspace = args.workspace.resolve()
     if args.print_research_sha256:
-        print(sha256_file(workspace / "state" / "research.json"))
+        print(sha256_file(workspace_input(workspace, "state/research.json", "Research state")))
         return 0
-    plan_path = args.plan.resolve() if args.plan else workspace / "state" / "itinerary-plan.json"
+    plan_path = args.plan.resolve() if args.plan else workspace_input(workspace, "state/itinerary-plan.json", "Default plan")
     output = args.output.resolve() if args.output else workspace / "artifacts" / "itinerary.json"
     payload = assemble(workspace, plan_path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    artifact_io.write_private_text(args.output if args.output else output, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
     print(output)
     return 0
 

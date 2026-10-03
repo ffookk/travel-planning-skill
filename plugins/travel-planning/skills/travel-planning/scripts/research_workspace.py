@@ -482,6 +482,11 @@ def validate_source_snapshot(snapshot: dict[str, Any]) -> None:
         expires_at = datetime.fromisoformat(str(freshness["expires_at"]).replace("Z", "+00:00"))
     except ValueError as error:
         raise WorkspaceError(f"酒旅快照 {snapshot_id} 的时间格式无效") from error
+    if (checked_at.utcoffset() is None) != (expires_at.utcoffset() is None):
+        raise WorkspaceError(
+            f"Snapshot {snapshot_id} checked_at/expires_at must both include UTC offsets "
+            "or both omit them; add explicit offsets to identify the intended instants"
+        )
     if expires_at <= checked_at:
         raise WorkspaceError(f"酒旅快照 {snapshot_id} 的 expires_at 必须晚于 checked_at")
     items = snapshot.get("items")
@@ -747,7 +752,8 @@ def normalize_sources(payload: Any, task_id: str) -> list[dict[str, Any]]:
         item = dict(source)
         item["id"] = source_id
         item["task_id"] = task_id
-        item["checked_at"] = item.get("checked_at") or now()
+        item["checked_at"] = item.get("checked_at") or None
+        item["recorded_at"] = item.get("recorded_at") or now()
         item["freshness"] = item.get("freshness") or "dynamic"
         if item["freshness"] not in FRESHNESS_CLASSES:
             raise WorkspaceError(f"来源 {source_id} 的 freshness 无效")
@@ -781,6 +787,7 @@ def evidence_record_path(workspace: Path, task_id: str, record_id: str) -> Path:
 
 
 def source_evidence_record(source: dict[str, Any]) -> dict[str, Any]:
+    archived_at = now()
     return {
         "record_version": 1,
         "id": source["id"],
@@ -796,11 +803,64 @@ def source_evidence_record(source: dict[str, Any]) -> dict[str, Any]:
         "location": source.get("location"),
         "topic": source.get("topic"),
         "tags": source.get("tags") or [],
-        "checked_at": source["checked_at"],
+        "checked_at": source.get("checked_at"),
+        "recorded_at": source.get("recorded_at") or archived_at,
         "valid_until": source.get("valid_until"),
         "freshness": source["freshness"],
-        "archived_at": now(),
+        "archived_at": archived_at,
     }
+
+
+def archive_document(source: Path, stored: Path, target: Path, record: dict[str, Any]) -> None:
+    """Hash the staged bytes and roll back a new document if its record cannot be written."""
+    stored.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    published = False
+    try:
+        digest = hashlib.sha256()
+        size = 0
+        with tempfile.NamedTemporaryFile(mode="wb", prefix=".archive-document-", dir=stored.parent, delete=False) as output_file:
+            temporary = Path(output_file.name)
+            with source.open("rb") as input_file:
+                while chunk := input_file.read(min(1024 * 1024, MAX_DOCUMENT_BYTES - size + 1)):
+                    size += len(chunk)
+                    if size > MAX_DOCUMENT_BYTES:
+                        raise WorkspaceError("单个归档文档不能超过 25 MiB")
+                    output_file.write(chunk)
+                    digest.update(chunk)
+            output_file.flush()
+            os.fsync(output_file.fileno())
+        record.update({"bytes": size, "sha256": digest.hexdigest()})
+        os.replace(temporary, stored)
+        temporary = None
+        published = True
+        write_json(target, record)
+    except BaseException as error:
+        if published:
+            # A replacement can complete before an interruption reaches its caller.
+            try:
+                target.lstat()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                raise WorkspaceError("Document archive commit state could not be checked; its copy was retained for local inspection") from None
+            else:
+                if isinstance(error, (OSError, UnicodeError)):
+                    raise WorkspaceError("Document archive metadata appeared before the write failed; its copy was retained for local inspection") from None
+                raise
+            try:
+                stored.unlink(missing_ok=True)
+            except OSError:
+                raise WorkspaceError("Document archive failed and its new copy could not be removed; inspect the local archive before retrying") from None
+        if isinstance(error, (OSError, UnicodeError)):
+            raise WorkspaceError("Document archive could not be written; no new document or record was retained") from None
+        raise
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                raise WorkspaceError("A private document staging file could not be removed; inspect the local archive directory") from None
 
 
 def archive(args: argparse.Namespace) -> dict[str, Any]:
@@ -821,6 +881,7 @@ def archive(args: argparse.Namespace) -> dict[str, Any]:
     if args.summary and len(args.summary) > 4000:
         raise WorkspaceError("summary 最长 4000 字符；长文档请作为允许留存的文件归档")
 
+    recorded_at = now()
     record: dict[str, Any] = {
         "record_version": 1,
         "id": valid_id(args.record_id, "record_id"),
@@ -834,10 +895,11 @@ def archive(args: argparse.Namespace) -> dict[str, Any]:
         "location": args.location,
         "topic": args.topic,
         "tags": args.tag or [],
-        "checked_at": args.checked_at or now(),
+        "checked_at": args.checked_at or None,
+        "recorded_at": recorded_at,
         "valid_until": args.valid_until,
         "freshness": args.freshness,
-        "archived_at": now(),
+        "archived_at": recorded_at,
     }
     if args.kind == "document":
         if not args.file:
@@ -848,23 +910,18 @@ def archive(args: argparse.Namespace) -> dict[str, Any]:
         suffix = source_file.suffix.lower()
         if suffix not in DOCUMENT_EXTENSIONS:
             raise WorkspaceError(f"不支持的文档类型：{suffix or '无扩展名'}")
-        size = source_file.stat().st_size
-        if size > MAX_DOCUMENT_BYTES:
-            raise WorkspaceError("单个归档文档不能超过 25 MiB")
-        digest = hashlib.sha256(source_file.read_bytes()).hexdigest()
         stored = workspace / "evidence" / args.task_id / "files" / f"{args.record_id}{suffix}"
         if stored.exists():
             raise WorkspaceError(f"归档文件已存在，不会覆盖：{stored}")
-        atomic_copy(source_file, stored)
         record.update(
             {
                 "original_filename": source_file.name,
                 "stored_path": str(stored.relative_to(workspace)),
-                "bytes": size,
-                "sha256": digest,
             }
         )
-    write_json(target, record)
+        archive_document(source_file, stored, target, record)
+    else:
+        write_json(target, record)
     return {"status": "archived", "workspace": str(workspace), "record": record}
 
 
@@ -1315,7 +1372,7 @@ def build_parser() -> argparse.ArgumentParser:
     command.add_argument("--location")
     command.add_argument("--topic")
     command.add_argument("--tag", action="append")
-    command.add_argument("--checked-at")
+    command.add_argument("--checked-at", help="Actual source verification time; omitted means unknown, not the archive time")
     command.add_argument("--valid-until")
     command.add_argument("--freshness", choices=sorted(FRESHNESS_CLASSES), default="dynamic")
     command.set_defaults(handler=archive)
