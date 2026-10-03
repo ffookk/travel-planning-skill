@@ -130,7 +130,7 @@
         }
       ],
       "properties": {
-        "task": {"type": "string", "minLength": 1},
+        "task": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"},
         "file": {"type": "string", "minLength": 1},
         "path": {"type": "string"},
         "id_key": {"type": "string", "minLength": 1},
