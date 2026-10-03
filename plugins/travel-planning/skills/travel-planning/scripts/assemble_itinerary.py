@@ -183,11 +183,12 @@ def normalize_lodging(item: dict[str, Any], defaults: dict[str, Any]) -> dict[st
         if quote.get("amount_per_room_per_night_cny") is not None else "待重新查询"
     )
     result["luggage_storage"] = (item.get("luggage_storage") or {}).get("policy") or "入住前确认"
-    location = item.get("location") or {}
-    result["location_verification"] = {
-        "status": "verified", "checked_at": location.get("poi_verified_at") or defaults["checked_at"],
-        "method": defaults["location_verification_method"], "source_ids": item.get("source_ids") or [],
-    }
+    # Assembly cannot establish hotel identity or turn a POI timestamp into verification.
+    verification = result.get("location_verification")
+    if not isinstance(verification, dict):
+        result["location_verification"] = {"status": "to_recheck"}
+    elif not verification.get("status"):
+        verification["status"] = "to_recheck"
     result["action_links"] = normalize_actions(
         item.get("action_links") or [], "hotel", defaults["hotel_provider"],
         defaults["hotel_disclaimer"], defaults["checked_at"],
