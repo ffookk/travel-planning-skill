@@ -419,6 +419,9 @@ def build_attraction_event(
         }
         if point.get("narration"):
             checkpoint["narration"] = point["narration"]
+        for field in ("meal_id", "images", "action_links", "fallback"):
+            if field in point:
+                checkpoint[field] = deepcopy(point[field])
         checkpoints.append(checkpoint)
     reservation = attraction.get("reservation") or {}
     official = attraction.get("official") or {}
