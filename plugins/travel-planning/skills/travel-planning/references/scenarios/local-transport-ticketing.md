@@ -1,4 +1,4 @@
-<!-- travel-guide: {"id":"local-transport-ticketing","title":"Local Transport Ticket Selection","category":"planning","when":"Use when a local itinerary could use different tickets, passes, or payment methods whose eligibility and coverage change cost or boarding feasibility.","tags":["transit fares","passes","本地交通票","交通通票"]} -->
+<!-- travel-guide: {"id":"local-transport-ticketing","title":"Local Transport Ticket Selection","category":"transport","when":"Use when a local itinerary could use different tickets, passes, or payment methods whose eligibility and coverage change cost or boarding feasibility.","tags":["transit fares","passes","本地交通票","交通通票"]} -->
 
 # Local Transport Ticket Selection
 
@@ -13,7 +13,7 @@ Collect the planned journeys and dates, operators and zones, traveler eligibilit
 ## Decision procedure
 
 1. Map each planned leg to the product that actually covers it. Pay particular attention to airport, express, ferry, and inter-operator legs where ordinary coverage may not apply.
-2. Compare the eligible single-fare baseline with the pass, adding verified mandatory supplements and acquisition charges. Count only journeys the itinerary is likely to execute; optional sightseeing rides do not automatically justify a pass.
+2. Compare eligible single fares, any applicable capped pay-as-you-go total, and the pass, adding verified mandatory supplements and acquisition charges to each. Establish each cap's period, covered operators/zones, exclusions, and per-traveler payment-medium conditions from the operator; do not apply one traveler's cap to the party or assume an excluded service is capped. Count only journeys the itinerary is likely to execute; optional sightseeing rides do not automatically justify a pass.
 3. Check the validity clock. A calendar-day product, a rolling duration from activation, and a product valid only on specified dates are not interchangeable. Verify whether the same payment medium must be used consistently for transfers or caps; do not generalize between operators.
 4. Confirm how the traveler obtains and validates the ticket before the first required boarding. If that step cannot be completed using available means, retain an operator-supported alternative even if it costs more.
 
@@ -25,4 +25,4 @@ If eligibility or exclusions remain unknown, compare using known eligible fares 
 
 ## Synthetic decision change
 
-A fictional day pass costs 12 units; three planned rides cost 3 each. The airport express additionally requires 8 units under either choice. The comparison is 20 with the pass versus 17 without, not 12 versus 17. The itinerary keeps individual fares unless the actual ride plan changes.
+A fictional day pass costs 12 units; three planned rides cost 3 each. The airport express additionally requires 8 units under either choice. The comparison is 20 with the pass versus 17 without, not 12 versus 17. The itinerary keeps individual fares unless the actual ride plan changes. If the operator instead confirms a six-unit cap covering those three ordinary rides with the airport charge still excluded, capped pay-as-you-go totals 14 and becomes the cheaper choice. This cap applies only under its verified payment and coverage conditions.
