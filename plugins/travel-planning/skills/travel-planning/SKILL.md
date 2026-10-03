@@ -7,6 +7,8 @@ description: 调研和规划需要可靠动态信息的旅行，比较路线与�
 
 将旅行需求转化为可执行的逐日事件流，并交付可独立打开的响应式 HTML 页面和对应 JSON。
 
+For optional developer-side checks of synthetic planning decisions, see [offline evaluation](references/offline-evaluation.md). This evaluator does not replace trip research or the production itinerary audit.
+
 ## 路线确认门槛
 
 1. 只收集会显著影响方案的信息：出发地、目的地、日期或天数、人数、预算、节奏、兴趣、住宿位置和硬性限制。除日期、目的地或无障碍安全风险外，缺失信息可用明确的低风险假设补齐。
