@@ -75,6 +75,11 @@ def audit(data: dict[str, Any]) -> dict[str, Any]:
     except ValueError as error:
         blocking.append(str(error))
 
+    schedule = render_itinerary.schedule_validation
+    schedule_errors, schedule_warnings = schedule.audit_schedule(data)
+    blocking.extend(schedule_errors)
+    warnings.extend(schedule_warnings)
+
     planning = data.get("planning") or {}
     meals = {item.get("id"): item for item in planning.get("meal_options") or []}
     source_snapshots = {
@@ -101,6 +106,7 @@ def audit(data: dict[str, Any]) -> dict[str, Any]:
         previous_end: int | None = None
         timed_events: list[tuple[int, int, dict[str, Any]]] = []
         for event in events:
+            temporal_event = schedule.dated(event) or schedule.timezone_name(event, day, data.get("trip") or {}) is not None
             if event.get("id"):
                 checked_event_ids.append(str(event["id"]))
             elif (data.get("workflow") or {}).get("phase") in {"confirmed_planning", "final"}:
@@ -120,16 +126,16 @@ def audit(data: dict[str, Any]) -> dict[str, Any]:
                     point_start = minute_of(point.get("time"))
                     point_end = minute_of(point.get("end_time"))
                     point_name = point.get("name") or point.get("id") or "未命名节点"
-                    if point_start is None or point_end is None:
+                    if not temporal_event and (point_start is None or point_end is None):
                         blocking.append(f"{day_name} 景点节点“{point_name}”必须提供 HH:MM 的 time 和 end_time")
                         continue
-                    if point_end < point_start:
+                    if not temporal_event and point_end < point_start:
                         blocking.append(f"{day_name} 景点节点“{point_name}”的 end_time 早于 time")
-                    if checkpoint_previous_end is not None and point_start < checkpoint_previous_end:
+                    if not temporal_event and checkpoint_previous_end is not None and point_start < checkpoint_previous_end:
                         blocking.append(f"{day_name} 景点节点“{point_name}”与前一节点时间重叠")
-                    if event_start is not None and point_start < event_start:
+                    if not temporal_event and event_start is not None and point_start < event_start:
                         blocking.append(f"{day_name} 景点节点“{point_name}”早于外层景点事件")
-                    if event_end is not None and point_end > event_end:
+                    if not temporal_event and event_end is not None and point_end > event_end:
                         blocking.append(f"{day_name} 景点节点“{point_name}”晚于外层景点事件")
                     checkpoint_previous_end = point_end
                     for image in point.get("images") or []:
@@ -141,15 +147,20 @@ def audit(data: dict[str, Any]) -> dict[str, Any]:
                         used_meal_ids.add(str(point["meal_id"]))
             start = minute_of(event.get("time"))
             end = minute_of(event.get("end_time"))
+            if schedule.dated(event):
+                start = schedule.clock(str(event.get("start_at") or "")[11:16])
+                end = schedule.clock(str(event.get("end_at") or "")[11:16])
             if start is None:
                 blocking.append(f"{day_name} 事件“{event.get('title') or '未命名'}”的 time 必须是 HH:MM")
                 continue
-            if previous_end is not None and start < previous_end:
+            if not temporal_event and previous_end is not None and start < previous_end:
                 blocking.append(f"{day_name} 事件“{event.get('title') or '未命名'}”与前一事件时间重叠或顺序倒置")
-            if end is not None and end < start:
+            if not temporal_event and end is not None and end < start:
                 blocking.append(f"{day_name} 事件“{event.get('title') or '未命名'}”的 end_time 早于 time")
-            timed_events.append((start, end if end is not None else start, event))
-            previous_end = end if end is not None else start
+            crosses_date = schedule.dated(event) and str(event.get("start_at"))[:10] != str(event.get("end_at"))[:10]
+            if not crosses_date and (end is None or end >= start):
+                timed_events.append((start, end if end is not None else start, event))
+            previous_end = None if temporal_event else end if end is not None else start
 
             if event.get("type") == "meal" and event.get("meal_id"):
                 meal_id = str(event["meal_id"])
@@ -158,7 +169,7 @@ def audit(data: dict[str, Any]) -> dict[str, Any]:
                 allowed = minute_range(meal.get("time_window"))
                 if end is None:
                     blocking.append(f"{day_name} 餐饮事件“{event.get('title') or meal_id}”必须提供 end_time")
-                elif allowed and (start < allowed[0] or end > allowed[1]):
+                elif allowed and (crosses_date or start < allowed[0] or end > allowed[1]):
                     blocking.append(
                         f"{day_name} 餐饮事件“{event.get('title') or meal_id}”的事件时间超出 meal_option.time_window"
                     )
