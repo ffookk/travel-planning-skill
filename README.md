@@ -2,6 +2,8 @@
 
 面向 Codex 的旅行研究与行程交付插件。它会先比较路线并让用户确认，再按需查询地图、交通、住宿、天气和社区体验，最后生成带来源的 `itinerary.json` 与可独立打开的响应式 `itinerary.html`。
 
+> **Sensitive-data boundary:** This plugin supports ordinary travel research. It is not a confidential-message transport or an approved system for classified information. Provider queries, local artifacts, and external resources in exported HTML have separate disclosure and retention boundaries. Read the [sensitive-data guidance](plugins/travel-planning/docs/security/sensitive-data-boundary.md) before using restricted information. These instructions do not implement encryption, network isolation, or a confidential runtime mode.
+
 ## 在线 Demo
 
 [查看兰州一日游示例](https://starlit-tartufo-3b4ce4.netlify.app/)，可直接体验最终行程页面的路线图、逐日时间轴、关键信息一览和移动端布局。

@@ -7,6 +7,10 @@ description: 调研和规划需要可靠动态信息的旅行，比较路线与�
 
 将旅行需求转化为可执行的逐日事件流，并交付可独立打开的响应式 HTML 页面和对应 JSON。
 
+## Sensitive-data intake
+
+Before any preflight, search, provider call, delegation, workspace write, or export, assess whether the input is ordinary travel data or is described as confidential, restricted, classified, or requiring no external disclosure. For the latter or an ambiguous sensitivity claim, pause handling the affected material and read the [sensitive-data boundary](../../docs/security/sensitive-data-boundary.md); ask only abstract classification, recipient, and environment questions, never for the payload. Use public or synthetic information for independent work. This Skill does not provide confidential transmission, and these instructions do not enforce runtime isolation. Ordinary travel planning continues under the existing workflow and authorization rules.
+
 For optional developer-side checks of synthetic planning decisions, see [offline evaluation](references/offline-evaluation.md). This evaluator does not replace trip research or the production itinerary audit.
 
 ## 路线确认门槛

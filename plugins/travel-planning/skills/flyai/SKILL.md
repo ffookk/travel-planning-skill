@@ -7,6 +7,10 @@ description: 使用插件内锁定版本的飞猪 FlyAI 通用能力搜索航班
 
 本 Skill 直接集成 `alibaba-flyai/flyai-skill` 的通用检索流程，通过固定版本 `@fly-ai/flyai-cli@1.0.16` 访问飞猪 MCP API，不在插件内重复实现供应商协议。
 
+## Sensitive-data intake
+
+Before any preflight, search, provider call, delegation, workspace write, or export, assess whether the input is ordinary travel data or is described as confidential, restricted, classified, or requiring no external disclosure. For the latter or an ambiguous sensitivity claim, pause handling the affected material and read the [sensitive-data boundary](../../docs/security/sensitive-data-boundary.md); ask only abstract classification, recipient, and environment questions, never for the payload. Use public or synthetic information for independent work. This Skill does not provide confidential transmission, and these instructions do not enforce runtime isolation. Ordinary travel planning continues under the existing workflow and authorization rules.
+
 ## 执行入口
 
 在插件根目录运行：
