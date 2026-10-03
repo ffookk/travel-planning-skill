@@ -811,6 +811,46 @@ def source_evidence_record(source: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def archive_document(source: Path, stored: Path, target: Path, record: dict[str, Any]) -> None:
+    """Hash the staged bytes and roll back a new document if its record cannot be written."""
+    stored.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    published = False
+    try:
+        digest = hashlib.sha256()
+        size = 0
+        with tempfile.NamedTemporaryFile(mode="wb", prefix=".archive-document-", dir=stored.parent, delete=False) as output_file:
+            temporary = Path(output_file.name)
+            with source.open("rb") as input_file:
+                while chunk := input_file.read(min(1024 * 1024, MAX_DOCUMENT_BYTES - size + 1)):
+                    size += len(chunk)
+                    if size > MAX_DOCUMENT_BYTES:
+                        raise WorkspaceError("单个归档文档不能超过 25 MiB")
+                    output_file.write(chunk)
+                    digest.update(chunk)
+            output_file.flush()
+            os.fsync(output_file.fileno())
+        record.update({"bytes": size, "sha256": digest.hexdigest()})
+        os.replace(temporary, stored)
+        published = True
+        write_json(target, record)
+    except BaseException as error:
+        if published:
+            try:
+                stored.unlink(missing_ok=True)
+            except OSError:
+                raise WorkspaceError("Document archive failed and its new copy could not be removed; inspect the local archive before retrying") from None
+        if isinstance(error, (OSError, UnicodeError)):
+            raise WorkspaceError("Document archive could not be written; no new document or record was retained") from None
+        raise
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                raise WorkspaceError("A private document staging file could not be removed; inspect the local archive directory") from None
+
+
 def archive(args: argparse.Namespace) -> dict[str, Any]:
     workspace = workspace_path(args.workspace)
     target = evidence_record_path(workspace, args.task_id, args.record_id)
@@ -858,23 +898,18 @@ def archive(args: argparse.Namespace) -> dict[str, Any]:
         suffix = source_file.suffix.lower()
         if suffix not in DOCUMENT_EXTENSIONS:
             raise WorkspaceError(f"不支持的文档类型：{suffix or '无扩展名'}")
-        size = source_file.stat().st_size
-        if size > MAX_DOCUMENT_BYTES:
-            raise WorkspaceError("单个归档文档不能超过 25 MiB")
-        digest = hashlib.sha256(source_file.read_bytes()).hexdigest()
         stored = workspace / "evidence" / args.task_id / "files" / f"{args.record_id}{suffix}"
         if stored.exists():
             raise WorkspaceError(f"归档文件已存在，不会覆盖：{stored}")
-        atomic_copy(source_file, stored)
         record.update(
             {
                 "original_filename": source_file.name,
                 "stored_path": str(stored.relative_to(workspace)),
-                "bytes": size,
-                "sha256": digest,
             }
         )
-    write_json(target, record)
+        archive_document(source_file, stored, target, record)
+    else:
+        write_json(target, record)
     return {"status": "archived", "workspace": str(workspace), "record": record}
 
 

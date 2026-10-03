@@ -119,6 +119,8 @@ python3 skills/travel-planning/scripts/research_workspace.py archive \
 
 For `archive`, pass `--checked-at` only when the actual verification time is known. Omitting it leaves `checked_at` unknown while `recorded_at` and `archived_at` record the archival operation. This applies to links, notes, and documents; preserving a document does not verify its contents.
 
+Document ingestion streams into a private temporary file and computes the size and SHA256 from exactly those stored bytes, enforcing the 25 MiB limit during reading. Ordinary copy or metadata-write failures remove this attempt's staged or newly copied document so the same record ID can be retried; pre-existing records and source files are preserved. If cleanup itself fails, the command reports that local recovery is required. The document and metadata still use two filesystem replacements: a crash between them can leave an incomplete pair, so this is not a filesystem transaction or a guarantee that a changing source was read as one historical version.
+
 - `freshness=dynamic`：价格、库存、时刻、天气和临时公告，下次必须重查。
 - `freshness=seasonal`：季节玩法和装备，只作相同季节候选。
 - `freshness=stable`：官方入口、地理背景和长期规则，关键事实仍需复核。
